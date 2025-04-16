@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+embedded-hal = "1.0.0"
+rppal = { version = "0.22.1", features = ["hal"] }
 signal-hook = "0.3.17"
