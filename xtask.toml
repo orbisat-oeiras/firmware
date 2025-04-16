@@ -1,0 +1,7 @@
+default = "auto"
+
+[auto.build]
+package = "orbisat"
+release = false
+target = "aarch64-unknown-linux-gnu"
+linker = "aarch64-linux-gnu-gcc"
