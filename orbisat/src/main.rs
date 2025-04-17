@@ -1,26 +1,18 @@
-use embedded_hal::delay::DelayNs;
-use orbisat::signal::SmartSignal;
-use rppal::{hal, uart};
+use orbisat::{dummy::DummySender, signal::SmartSignal, tmtc::SerialPacketSink};
+use rppal::uart;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let signal = SmartSignal::new()?;
 
-    let mut uart = uart::Uart::new(19200, uart::Parity::None, 8, 1)?;
+    let uart = uart::Uart::new(19200, uart::Parity::None, 8, 1)?;
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
 
-    let mut delay = hal::Delay::new();
+    let mut sink = SerialPacketSink::new(uart, rx);
 
-    loop {
-        if signal.has_fired() {
-            println!("Signal received, exiting...");
-            break;
-        }
+    let mut sender = DummySender::new(tx);
 
-        // Simulate some work
-        uart.write(b"Hello, UART!\n")?;
-        uart.drain()?;
-        println!("Sent data over UART");
-        delay.delay_ms(500);
-    }
+    tokio::try_join!(sink.steady(signal.clone()), sender.steady(signal.clone()))?;
 
     Ok(())
 }
