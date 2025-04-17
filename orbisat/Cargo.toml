@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.98"
 embedded-hal = "1.0.0"
 rppal = { version = "0.22.1", features = ["hal"] }
 signal-hook = "0.3.17"
+tokio = { version = "1.44.2", features = ["rt", "sync", "macros", "time"] }

@@ -52,3 +52,25 @@ impl Future for SmartSignal {
         }
     }
 }
+
+#[macro_export]
+macro_rules! cancellable_loop {
+    ($ss:expr => $body:block) => {
+        tokio::select! {
+            _ = {
+                // Check, at compile time, that ss is a SmartSignal.
+                let _: &SmartSignal = &$ss;
+                $ss
+            } => anyhow::Ok(()),
+            res = async move {
+                $body
+                // When using a `loop`, this won't ever be reached, but it is needed
+                // for the compiler to infer the type of the async block and allow `?`.
+                #[allow(unreachable_code)]
+                anyhow::Ok(())
+            } => res
+        }
+    };
+}
+
+pub use cancellable_loop;
