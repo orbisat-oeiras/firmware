@@ -1,4 +1,9 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{atomic::AtomicBool, Arc},
+    task::{Context, Poll},
+};
 
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
@@ -32,5 +37,18 @@ impl SmartSignal {
 
     pub fn has_fired(&self) -> bool {
         self.flag.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl Future for SmartSignal {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.has_fired() {
+            Poll::Ready(())
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
     }
 }
