@@ -5,6 +5,7 @@ use signal_hook::{
     flag,
 };
 
+#[derive(Debug, Clone)]
 pub struct SmartSignal {
     flag: Arc<AtomicBool>,
 }
