@@ -1,6 +1,8 @@
-use orbipacket::Packet;
+use std::time::SystemTime;
+
+use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
 use rppal::uart::Uart;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::signal::{cancellable_loop, SmartSignal};
 
@@ -26,5 +28,29 @@ impl SerialPacketSink {
                 println!("Wrote {} bytes", written);
             }
         })
+    }
+}
+
+pub struct TmPacketSender {
+    channel: Sender<Packet>,
+    id: DeviceId,
+}
+
+impl TmPacketSender {
+    pub fn new(channel: Sender<Packet>, id: DeviceId) -> Self {
+        Self { channel, id }
+    }
+
+    pub async fn send(&self, payload: Payload) -> anyhow::Result<()> {
+        let timestamp = Timestamp::new(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_nanos() as u64,
+        );
+        let packet = TmPacket::new(self.id, timestamp, payload);
+        let packet = Packet::TmPacket(packet);
+        self.channel.send(packet).await?;
+
+        Ok(())
     }
 }
