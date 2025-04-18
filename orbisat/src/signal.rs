@@ -54,7 +54,7 @@ impl Future for SmartSignal {
 }
 
 #[macro_export]
-macro_rules! cancellable_loop {
+macro_rules! cancellable {
     ($ss:expr => $body:block) => {
         tokio::select! {
             _ = {
@@ -73,4 +73,4 @@ macro_rules! cancellable_loop {
     };
 }
 
-pub use cancellable_loop;
+pub use cancellable;

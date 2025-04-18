@@ -4,7 +4,7 @@ use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
 use rppal::uart::Uart;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::signal::{cancellable_loop, SmartSignal};
+use crate::signal::{cancellable, SmartSignal};
 
 pub struct SerialPacketSink {
     uart: Uart,
@@ -22,7 +22,7 @@ impl SerialPacketSink {
     }
 
     pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
-        cancellable_loop!(cancel => {
+        cancellable!(cancel => {
             while let Some(packet) = self.channel.recv().await {
                 let written = self.uart.write(packet.encode(&mut self.buffer[..])?)?;
                 println!("Wrote {} bytes", written);

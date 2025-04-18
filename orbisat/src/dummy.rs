@@ -3,7 +3,7 @@ use std::time::Duration;
 use orbipacket::{DeviceId, Packet, Payload};
 use tokio::sync::mpsc::Sender;
 
-use crate::{cancellable_loop, signal::SmartSignal, tmtc::TmPacketSender};
+use crate::{cancellable, signal::SmartSignal, tmtc::TmPacketSender};
 
 pub struct DummySender {
     packet_sender: TmPacketSender,
@@ -18,7 +18,7 @@ impl DummySender {
 
     pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
-        cancellable_loop!(cancel => {
+        cancellable!(cancel => {
             loop {
                 let packet = Payload::from_bytes(&[11])?;
 
