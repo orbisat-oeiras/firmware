@@ -521,7 +521,7 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "orbipacket"
 version = "0.1.0"
-source = "git+https://github.com/orbisat-oeiras/orbipacket-rs#4cf8e79b8d9cefa46b21fecb3f6427d72217c4fa"
+source = "git+https://github.com/orbisat-oeiras/orbipacket-rs#2164ab1cb599415634ef9bab27053308e8a75958"
 dependencies = [
  "bytes",
  "corncobs",
