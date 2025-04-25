@@ -12,7 +12,7 @@ pub struct DummySender {
 impl DummySender {
     pub fn new(send: Sender<Packet>) -> Self {
         Self {
-            packet_sender: TmPacketSender::new(send, DeviceId::MissingDevice),
+            packet_sender: TmPacketSender::new(send, DeviceId::System),
         }
     }
 
@@ -20,7 +20,7 @@ impl DummySender {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         cancellable!(cancel => {
             loop {
-                let packet = Payload::from_bytes(&[11])?;
+                let packet = Payload::from_bytes(b"HEARTBEAT")?;
 
                 println!("Send packet");
                 self.packet_sender.send(packet).await?;
