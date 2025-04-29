@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use orbipacket::{DeviceId, Packet, Payload};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::broadcast::Sender;
 
 use crate::{cancellable, signal::SmartSignal, tmtc::TmPacketSender};
 
