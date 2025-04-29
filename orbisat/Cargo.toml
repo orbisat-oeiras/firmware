@@ -5,7 +5,11 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.98"
+bme280 = { version = "0.5.1", features = ["with_std"] }
+chrono = { version = "0.4.40", features = ["std", "now"] }
 embedded-hal = "1.0.0"
+embedded-hal-bus = "0.3.0"
+mma8x5x = { git = "https://github.com/eldruin/mma8x5x-rs", version = "0.1.1" }
 orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs", version = "0.1.0" }
 rppal = { version = "0.22.1", features = ["hal"] }
 signal-hook = "0.3.17"
