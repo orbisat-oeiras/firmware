@@ -5,11 +5,11 @@ use tokio::sync::broadcast::Sender;
 
 use crate::{cancellable, signal::SmartSignal, tmtc::TmPacketSender};
 
-pub struct DummySender {
+pub struct HeartbeatSender {
     packet_sender: TmPacketSender,
 }
 
-impl DummySender {
+impl HeartbeatSender {
     pub fn new(send: Sender<Packet>) -> Self {
         Self {
             packet_sender: TmPacketSender::new(send, DeviceId::System),
