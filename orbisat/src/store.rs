@@ -20,7 +20,6 @@ impl FileStore {
         let mut path = PathBuf::new();
         path.push(filename);
         let file = File::create(path)?;
-        println!("here");
         Ok(Self {
             file,
             channel,
