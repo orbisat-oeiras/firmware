@@ -1,3 +1,4 @@
+pub mod logger;
 pub mod sensor;
 pub mod signal;
 pub mod store;
