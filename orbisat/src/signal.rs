@@ -35,6 +35,10 @@ impl SmartSignal {
         Ok(Self { flag })
     }
 
+    pub fn fire(&mut self) {
+        self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
     pub fn has_fired(&self) -> bool {
         self.flag.load(std::sync::atomic::Ordering::SeqCst)
     }
