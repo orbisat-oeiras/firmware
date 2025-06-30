@@ -1,4 +1,5 @@
 pub mod logger;
+pub mod navigation;
 pub mod sensor;
 pub mod signal;
 pub mod store;
