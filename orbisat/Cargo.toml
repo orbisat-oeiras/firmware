@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = "1.0.98"
 bme280 = { version = "0.5.1", features = ["with_std"] }
 chrono = { version = "0.4.40", features = ["std", "now"] }
+circular-buffer = "1.1.0"
 embedded-hal = "1.0.0"
 embedded-hal-bus = "0.3.0"
 mma8x5x = { git = "https://github.com/eldruin/mma8x5x-rs", version = "0.1.1" }
