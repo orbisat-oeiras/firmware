@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use bme280::{i2c::BME280, Configuration, IIRFilter, Oversampling};
+use bme280::{Configuration, IIRFilter, Oversampling, i2c::BME280};
 use embedded_hal::{delay::DelayNs, i2c};
 use mma8x5x::{Mma8x5x, ModeChangeError};
 use orbipacket::{DeviceId, Packet, Payload};
 use tokio::sync::broadcast::Sender;
 
-use crate::{cancellable, signal::SmartSignal, tmtc::TmPacketSender};
+use crate::tmtc::TmPacketSender;
 
 pub struct PressureTemperatureHumiditySensor<D, I2C>
 where
@@ -48,31 +48,30 @@ where
         })
     }
 
-    pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
+    pub async fn steady(&mut self) -> anyhow::Result<()> {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
-        cancellable!(cancel => {
-            loop {
-                let measurement = self.bme.measure(&mut self.delay);
-                let measurement = match measurement {
-                    Ok(measurement) => measurement,
-                    Err(err) => {
-                        anyhow::bail!(format!("{:?}", err))
-                    }
-                };
 
-                let packet = Payload::from_bytes(&measurement.pressure.to_le_bytes()[..])?;
-                //println!("Pressure");
-                self.pressure_sender.send(packet).await?;
-                let packet = Payload::from_bytes(&measurement.temperature.to_le_bytes()[..])?;
-                //println!("Temperature");
-                self.temperature_sender.send(packet).await?;
-                let packet = Payload::from_bytes(&measurement.humidity.to_le_bytes()[..])?;
-                //println!("Humidity");
-                self.humidity_sender.send(packet).await?;
+        loop {
+            let measurement = self.bme.measure(&mut self.delay);
+            let measurement = match measurement {
+                Ok(measurement) => measurement,
+                Err(err) => {
+                    anyhow::bail!(format!("{:?}", err))
+                }
+            };
 
-                interval.tick().await;
-            }
-        })
+            let packet = Payload::from_bytes(&measurement.pressure.to_le_bytes()[..])?;
+            //println!("Pressure");
+            self.pressure_sender.send(packet).await?;
+            let packet = Payload::from_bytes(&measurement.temperature.to_le_bytes()[..])?;
+            //println!("Temperature");
+            self.temperature_sender.send(packet).await?;
+            let packet = Payload::from_bytes(&measurement.humidity.to_le_bytes()[..])?;
+            //println!("Humidity");
+            self.humidity_sender.send(packet).await?;
+
+            interval.tick().await;
+        }
     }
 }
 
@@ -102,29 +101,26 @@ where
         })
     }
 
-    pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
+    pub async fn steady(&mut self) -> anyhow::Result<()> {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
-        cancellable!(cancel => {
-            loop {
-                let measurement = self.mma.read();
-                match measurement {
-                    Ok(measurement) => {
-                        let mut packet = [0u8; 12];
-                        packet[..4].copy_from_slice(&measurement.x.to_le_bytes()[..]);
-                        packet[4..8].copy_from_slice(&measurement.y.to_le_bytes()[..]);
-                        packet[8..12].copy_from_slice(&measurement.z.to_le_bytes()[..]);
-                        let packet = Payload::from_bytes(&packet)?;
 
-                        self.packet_sender.send(packet).await?;
-                        interval.tick().await;
-                    },
-                    Err(err) => {
-                        match err {
-                            mma8x5x::Error::I2C(e) => anyhow::bail!(format!("{:?}", e))
-                        }
-                    }
+        loop {
+            let measurement = self.mma.read();
+            match measurement {
+                Ok(measurement) => {
+                    let mut packet = [0u8; 12];
+                    packet[..4].copy_from_slice(&measurement.x.to_le_bytes()[..]);
+                    packet[4..8].copy_from_slice(&measurement.y.to_le_bytes()[..]);
+                    packet[8..12].copy_from_slice(&measurement.z.to_le_bytes()[..]);
+                    let packet = Payload::from_bytes(&packet)?;
+
+                    self.packet_sender.send(packet).await?;
+                    interval.tick().await;
                 }
+                Err(err) => match err {
+                    mma8x5x::Error::I2C(e) => anyhow::bail!(format!("{:?}", e)),
+                },
             }
-        })
+        }
     }
 }

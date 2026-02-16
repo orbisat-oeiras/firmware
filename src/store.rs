@@ -1,9 +1,7 @@
 use std::{fs::File, io::Write as _, path::PathBuf};
 
 use orbipacket::Packet;
-use tokio::sync::broadcast::{error::RecvError, Receiver};
-
-use crate::{cancellable, signal::SmartSignal};
+use tokio::sync::broadcast::{Receiver, error::RecvError};
 
 pub struct FileStore {
     file: File,
@@ -27,17 +25,22 @@ impl FileStore {
         })
     }
 
-    pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
-        cancellable!(cancel => {
-            loop {
-                match self.channel.recv().await {
-                    Ok(packet) => {self.file.write_all(packet.encode(&mut self.buffer[..])?)?;},
-                    Err(RecvError::Closed) => {break;},
-                    Err(RecvError::Lagged(skipped)) => {
-                        println!("WARNING: FileStore has skipped {} packets due to broadcast channel lag.", skipped);
-                    }
+    pub async fn steady(&mut self) -> anyhow::Result<()> {
+        loop {
+            match self.channel.recv().await {
+                Ok(packet) => {
+                    self.file.write_all(packet.encode(&mut self.buffer[..])?)?;
+                }
+                Err(RecvError::Closed) => {
+                    break;
+                }
+                Err(RecvError::Lagged(skipped)) => {
+                    println!(
+                        "WARNING: FileStore has skipped {} packets due to broadcast channel lag.",
+                        skipped
+                    );
                 }
             }
-        })
+        }
     }
 }

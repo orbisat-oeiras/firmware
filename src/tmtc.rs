@@ -2,9 +2,7 @@ use std::time::SystemTime;
 
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
 use rppal::uart::Uart;
-use tokio::sync::broadcast::{error::RecvError, Receiver, Sender};
-
-use crate::signal::{cancellable, SmartSignal};
+use tokio::sync::broadcast::{Receiver, Sender, error::RecvError};
 
 pub struct SerialPacketSink {
     uart: Uart,
@@ -21,18 +19,23 @@ impl SerialPacketSink {
         }
     }
 
-    pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
-        cancellable!(cancel => {
-            loop {
-                match self.channel.recv().await {
-                    Ok(packet) => {self.uart.write(packet.encode(&mut self.buffer[..])?)?;},
-                    Err(RecvError::Closed) => {break;},
-                    Err(RecvError::Lagged(skipped)) => {
-                        println!("WARNING: SerialPacketSink has skipped {} packets due to broadcast channel lag.", skipped);
-                    }
+    pub async fn steady(&mut self) -> anyhow::Result<()> {
+        loop {
+            match self.channel.recv().await {
+                Ok(packet) => {
+                    self.uart.write(packet.encode(&mut self.buffer[..])?)?;
+                }
+                Err(RecvError::Closed) => {
+                    break;
+                }
+                Err(RecvError::Lagged(skipped)) => {
+                    println!(
+                        "WARNING: SerialPacketSink has skipped {} packets due to broadcast channel lag.",
+                        skipped
+                    );
                 }
             }
-        })
+        }
     }
 }
 

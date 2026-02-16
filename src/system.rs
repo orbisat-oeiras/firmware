@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use circular_buffer::CircularBuffer;
 use orbipacket::{DeviceId, Packet, Payload};
-use tokio::sync::broadcast::{error::RecvError, Receiver, Sender};
+use tokio::sync::broadcast::{Receiver, Sender, error::RecvError};
 
-use crate::{cancellable, signal::SmartSignal, tmtc::TmPacketSender};
+use crate::tmtc::TmPacketSender;
 
 pub struct HeartbeatSender {
     packet_sender: TmPacketSender,
@@ -18,16 +18,15 @@ impl HeartbeatSender {
         }
     }
 
-    pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
+    pub async fn steady(&mut self) -> anyhow::Result<()> {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
-        cancellable!(cancel => {
-            loop {
-                let packet = Payload::from_bytes(b"HEARTBEAT")?;
 
-                self.packet_sender.send(packet).await?;
-                interval.tick().await;
-            }
-        })
+        loop {
+            let packet = Payload::from_bytes(b"HEARTBEAT")?;
+
+            self.packet_sender.send(packet).await?;
+            interval.tick().await;
+        }
     }
 }
 
@@ -53,34 +52,52 @@ impl AltitudeMonitor {
         }
     }
 
-    pub async fn steady(&mut self, cancel: SmartSignal) -> anyhow::Result<()> {
-        cancellable!(cancel => {
-            loop {
-                match self.channel.recv().await {
-                    Ok(packet) => {
-                        if let Packet::TmPacket(packet) = packet {
-                            if let DeviceId::PressureSensor = packet.device_id() {
-                                let payload = packet.payload().as_bytes();
-                                let time = packet.timestamp();
-                                let pressure = f32::from_le_bytes((payload[0], payload[1], payload[2], payload[3]).into());
-                                let altitude = 145366.45 * (1. - f32::powf(pressure/1013.25, 0.190284));
+    pub async fn steady(&mut self) -> anyhow::Result<()> {
+        loop {
+            match self.channel.recv().await {
+                Ok(packet) => {
+                    if let Packet::TmPacket(packet) = packet {
+                        if let DeviceId::PressureSensor = packet.device_id() {
+                            let payload = packet.payload().as_bytes();
+                            let time = packet.timestamp();
+                            let pressure = f32::from_le_bytes(
+                                (payload[0], payload[1], payload[2], payload[3]).into(),
+                            );
+                            let altitude =
+                                145366.45 * (1. - f32::powf(pressure / 1013.25, 0.190284));
 
-                                // println!("At altitude {}", altitude);
+                            // println!("At altitude {}", altitude);
 
-                                self.past_alt.push_back(altitude);
-                                self.past_time.push_back(time.get());
+                            self.past_alt.push_back(altitude);
+                            self.past_time.push_back(time.get());
 
-                                let average_speed = std::iter::zip(self.past_alt.make_contiguous(), self.past_time.make_contiguous()).collect::<Vec<_>>().windows(2).map(|w| (*w[0].0 - *w[1].0).abs() / (*w[0].1 as i128 - *w[1].1 as i128).abs() as f32 * 1e9).sum::<f32>() / (self.past_alt.len() as f32);
-                                println!("Average speed: {:e}", average_speed);
-                            }
+                            let average_speed = std::iter::zip(
+                                self.past_alt.make_contiguous(),
+                                self.past_time.make_contiguous(),
+                            )
+                            .collect::<Vec<_>>()
+                            .windows(2)
+                            .map(|w| {
+                                (*w[0].0 - *w[1].0).abs()
+                                    / (*w[0].1 as i128 - *w[1].1 as i128).abs() as f32
+                                    * 1e9
+                            })
+                            .sum::<f32>()
+                                / (self.past_alt.len() as f32);
+                            println!("Average speed: {:e}", average_speed);
                         }
-                    },
-                    Err(RecvError::Closed) => {break;},
-                    Err(RecvError::Lagged(skipped)) => {
-                        println!("WARNING: AltitudeMonitor has skipped {} packets due to broadcast channel lag.", skipped);
                     }
                 }
+                Err(RecvError::Closed) => {
+                    break;
+                }
+                Err(RecvError::Lagged(skipped)) => {
+                    println!(
+                        "WARNING: AltitudeMonitor has skipped {} packets due to broadcast channel lag.",
+                        skipped
+                    );
+                }
             }
-        })
+        }
     }
 }
