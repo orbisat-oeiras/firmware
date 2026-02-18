@@ -10,13 +10,13 @@ path = "./src/bin/main.rs"
 
 [dependencies]
 ### General
-anyhow = "1.0.98"
+anyhow = { version = "1.0.98", default-features = false }
 defmt = "1.0.1"
 
 embedded-hal = "1.0.0"
 embedded-hal-bus = "0.3.0"
 
-circular-buffer = "1.1.0"
+circular-buffer = { version = "1.1.0", default-features = false }
 critical-section = "1.2.0"
 static_cell = "2.1.1"
 
@@ -32,23 +32,15 @@ esp-backtrace = { version = "0.18.1", features = [
     "esp32",
     "panic-handler",
 ] }
-esp-println = { version = "0.16.1", features = ["defmt-espflash", "esp32"] }
 
 ### Embassy
 embassy-executor = { version = "0.9.1", features = ["defmt"] }
 embassy-time = { version = "0.5.0", features = ["defmt"] }
 
 ### Components
-bme280 = { version = "0.5.1", features = ["with_std"] }
+bme280 = { version = "0.5.1", features = ["defmt"] }
 mma8x5x = { git = "https://github.com/eldruin/mma8x5x-rs", version = "0.1.1" }
-nmea = { version = "0.7.0", features = ["GNSS"] }
-
-### Raspberry Pi
-# TODO: remove these
-chrono = { version = "0.4.40", features = ["std", "now"] }
-rppal = { version = "0.22.1", features = ["hal"] }
-signal-hook = "0.3.17"
-tokio = { version = "1.44.2", features = ["rt", "sync", "macros", "time"] }
+nmea = { version = "0.7.0", features = ["GNSS"], default-features = false }
 
 [profile.dev]
 # For debug builds always builds with some optimization
