@@ -1,0 +1,13 @@
+[package]
+name = "orbisat-components"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[dependencies]
+orbisat = { path = "../orbisat" }
+
+### Components
+bme280 = { version = "0.5.1", features = ["defmt"] }
+mma8x5x = { git = "https://github.com/eldruin/mma8x5x-rs", version = "0.1.1" }
+nmea = { version = "0.7.0", features = ["GNSS"], default-features = false }

@@ -3,12 +3,6 @@
 version = 4
 
 [[package]]
-name = "anyhow"
-version = "1.0.101"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -100,21 +94,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "circular-buffer"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14c638459986b83c2b885179bd4ea6a2cbb05697b001501a56adb3a3d230803b"
-
-[[package]]
-name = "cobs"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea6d1b751c55bd9c0dda7d4ff752074e98f4765ae969664648bd193bb326d15"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -122,21 +101,6 @@ checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "crc"
-version = "3.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5eb8a2a1cd12ab0d987a5d5e825195d372001a4094a0376319d5a0ad71c1ba0d"
-dependencies = [
- "crc-catalog",
-]
-
-[[package]]
-name = "crc-catalog"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
 
 [[package]]
 name = "critical-section"
@@ -494,16 +458,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embedded-hal-bus"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "513e0b3a8fb7d3013a8ae17a834283f170deaf7d0eeab0a7c1a36ad4dd356d22"
-dependencies = [
- "critical-section",
- "embedded-hal 1.0.0",
-]
-
-[[package]]
 name = "embedded-io"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -714,10 +668,12 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a30e6c9fbcc01c348d46706fef8131c7775ab84c254a3cd65d0cd3f6414d592"
 dependencies = [
+ "defmt 1.0.1",
  "document-features",
  "esp-metadata-generated",
  "esp-sync",
  "log",
+ "portable-atomic",
 ]
 
 [[package]]
@@ -1158,36 +1114,33 @@ dependencies = [
 ]
 
 [[package]]
-name = "orbipacket"
+name = "orbisat"
 version = "0.1.0"
-source = "git+https://github.com/orbisat-oeiras/orbipacket-rs#f35d42b8d330a5c93f51f0106034d3788db72183"
+
+[[package]]
+name = "orbisat-components"
+version = "0.1.0"
 dependencies = [
- "cobs",
- "crc",
- "thiserror",
+ "bme280",
+ "mma8x5x",
+ "nmea",
+ "orbisat",
 ]
 
 [[package]]
-name = "orbisat"
+name = "orbisat-firmware"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "bme280",
- "circular-buffer",
- "critical-section",
  "defmt 1.0.1",
  "embassy-executor",
  "embassy-time",
- "embedded-hal 1.0.0",
- "embedded-hal-bus",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
+ "esp-println",
  "esp-rtos",
- "mma8x5x",
- "nmea",
- "orbipacket",
- "static_cell",
+ "orbisat",
+ "orbisat-components",
 ]
 
 [[package]]
@@ -1471,15 +1424,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "static_cell"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0530892bb4fa575ee0da4b86f86c667132a94b74bb72160f58ee5a4afec74c23"
-dependencies = [
- "portable-atomic",
-]
-
-[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1580,9 +1524,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.0.8+spec-1.1.0"
+version = "1.0.9+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0742ff5ff03ea7e67c8ae6c93cac239e0d9784833362da3f9a9c1da8dfefcbdc"
+checksum = "702d4415e08923e7e1ef96cd5727c0dfed80b4d2fa25db9647fe5eb6f7c5a4c4"
 dependencies = [
  "winnow",
 ]

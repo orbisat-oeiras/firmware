@@ -1,46 +1,6 @@
-[package]
-name = "orbisat"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.88"
-
-[[bin]]
-name = "orbisat"
-path = "./src/bin/main.rs"
-
-[dependencies]
-### General
-anyhow = { version = "1.0.98", default-features = false }
-defmt = "1.0.1"
-
-embedded-hal = "1.0.0"
-embedded-hal-bus = "0.3.0"
-
-circular-buffer = { version = "1.1.0", default-features = false }
-critical-section = "1.2.0"
-static_cell = "2.1.1"
-
-orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs", version = "0.1.0" }
-
-### ESP32
-esp-hal = { version = "1.0.0", features = ["defmt", "esp32", "unstable"] }
-esp-rtos = { version = "0.2.0", features = ["defmt", "embassy", "esp32"] }
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32"] }
-
-esp-backtrace = { version = "0.18.1", features = [
-    "defmt",
-    "esp32",
-    "panic-handler",
-] }
-
-### Embassy
-embassy-executor = { version = "0.9.1", features = ["defmt"] }
-embassy-time = { version = "0.5.0", features = ["defmt"] }
-
-### Components
-bme280 = { version = "0.5.1", features = ["defmt"] }
-mma8x5x = { git = "https://github.com/eldruin/mma8x5x-rs", version = "0.1.1" }
-nmea = { version = "0.7.0", features = ["GNSS"], default-features = false }
+[workspace]
+resolver = "3"
+members = ["orbisat", "orbisat-components", "orbisat-firmware"]
 
 [profile.dev]
 # For debug builds always builds with some optimization
