@@ -8,10 +8,13 @@ rust-version = "1.88"
 orbisat = { path = "../orbisat" }
 orbisat-components = { path = "../orbisat-components" }
 
+orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git" }
+
 defmt = "1.0.1"
 
 embassy-executor = { version = "0.9.1", features = ["defmt"] }
 embassy-time = { version = "0.5.0", features = ["defmt"] }
+embassy-sync = "0.7.2"
 
 esp-hal = { version = "1.0.0", features = ["defmt", "unstable"] }
 esp-rtos = { version = "0.2.0", features = ["defmt", "embassy"] }
