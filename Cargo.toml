@@ -1,3 +1,19 @@
 [workspace]
-resolver = "2"
-members = ["orbisat", "xtask"]
+resolver = "3"
+members = ["orbisat", "orbisat-components", "orbisat-firmware"]
+
+[profile.dev]
+# For debug builds always builds with some optimization
+opt-level = 's'
+# Without LTO, the linker fails
+lto = 'fat'
+
+[profile.release]
+# LLVM can perform better optimizations using a single thread
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+overflow-checks = false
