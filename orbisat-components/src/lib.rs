@@ -1,11 +1,11 @@
 #![no_std]
 
-use orbisat::PacketSink;
+use orbisat::comms::ByteSink;
 
-pub struct ConsolePacketSink;
+pub struct ConsoleByteSink;
 
-impl PacketSink for ConsolePacketSink {
-    async fn sink_bytes(&self, buf: &[u8]) {
+impl ByteSink for ConsoleByteSink {
+    async fn sink(&self, buf: &[u8]) {
         defmt::info!("Packet received: {}", buf);
     }
 }
