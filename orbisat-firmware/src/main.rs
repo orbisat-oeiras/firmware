@@ -8,14 +8,20 @@
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use embassy_time::Timer;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
+use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
+use orbisat::Component;
+use orbisat_components::ConsolePacketSink;
 use {esp_backtrace as _, esp_println as _};
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
+static CHANNEL: Channel<CriticalSectionRawMutex, Packet, 256> = Channel::new();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -29,11 +35,23 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("Embassy initialized!");
 
-    // TODO: Spawn some tasks
-    let _ = spawner;
+    let sink = ConsolePacketSink {};
+    spawner.spawn(sink_task(sink)).unwrap();
 
     loop {
-        info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
+        CHANNEL
+            .sender()
+            .send(Packet::TmPacket(TmPacket::new(
+                DeviceId::System,
+                Timestamp::new(10).unwrap(),
+                Payload::from_u8(10),
+            )))
+            .await;
+        Timer::after_millis(500).await;
     }
+}
+
+#[embassy_executor::task]
+async fn sink_task(sink: ConsolePacketSink) {
+    sink.run(CHANNEL.receiver()).await;
 }
