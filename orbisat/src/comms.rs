@@ -36,11 +36,18 @@ impl<S> Component for PacketSink<S>
 where
     S: ByteSink,
 {
+    // TODO: rewrite run in terms of run_once (also add a default impl in the trait?)
     async fn run(&mut self) {
         loop {
             let packet = self.recv.receive().await;
             let packet = packet.encode(&mut self.buf).unwrap();
             self.sink.sink(packet).await;
         }
+    }
+
+    async fn run_once(&mut self) {
+        let packet = self.recv.receive().await;
+        let packet = packet.encode(&mut self.buf).unwrap();
+        self.sink.sink(packet).await;
     }
 }
