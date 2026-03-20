@@ -1,5 +1,5 @@
 use embassy_sync::pubsub::WaitResult;
-use orbipacket::Packet;
+use orbipacket::{DeviceId, Packet};
 use orbisat_firmware_config::packet_channel::PacketChannelSubscriber;
 
 use crate::Component;
@@ -34,6 +34,10 @@ impl<S> Component for PacketSink<S>
 where
     S: ByteSink,
 {
+    fn id(&self) -> DeviceId {
+        DeviceId::System
+    }
+
     async fn run_once(&mut self) {
         let packet = match self.recv.next_message().await {
             WaitResult::Lagged(n) => {
