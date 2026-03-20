@@ -4,7 +4,7 @@ use orbipacket::Packet;
 use crate::Component;
 
 pub trait ByteSink {
-    fn sink(&self, buf: &[u8]) -> impl Future<Output = ()>;
+    fn sink(&mut self, buf: &[u8]) -> impl Future<Output = ()>;
 }
 
 pub struct PacketSink<S>
