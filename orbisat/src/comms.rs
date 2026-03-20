@@ -1,4 +1,7 @@
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Receiver};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex,
+    pubsub::{Subscriber, WaitResult},
+};
 use orbipacket::Packet;
 
 use crate::Component;
@@ -11,7 +14,7 @@ pub struct PacketSink<S>
 where
     S: ByteSink,
 {
-    recv: Receiver<'static, CriticalSectionRawMutex, Packet, 1>,
+    recv: Subscriber<'static, CriticalSectionRawMutex, Packet, 4, 2, 1>,
     sink: S,
     buf: [u8; Packet::MAX_ENCODE_BUFFER_SIZE],
 }
@@ -21,7 +24,7 @@ where
     S: ByteSink,
 {
     pub fn new(
-        recv: Receiver<'static, CriticalSectionRawMutex, Packet, 1>,
+        recv: Subscriber<'static, CriticalSectionRawMutex, Packet, 4, 2, 1>,
         sink: S,
     ) -> PacketSink<S> {
         Self {
@@ -39,14 +42,26 @@ where
     // TODO: rewrite run in terms of run_once (also add a default impl in the trait?)
     async fn run(&mut self) {
         loop {
-            let packet = self.recv.receive().await;
+            let packet = match self.recv.next_message().await {
+                WaitResult::Lagged(n) => {
+                    defmt::info!("PacketSink dropped {} packets", n);
+                    continue;
+                }
+                WaitResult::Message(p) => p,
+            };
             let packet = packet.encode(&mut self.buf).unwrap();
             self.sink.sink(packet).await;
         }
     }
 
     async fn run_once(&mut self) {
-        let packet = self.recv.receive().await;
+        let packet = match self.recv.next_message().await {
+            WaitResult::Lagged(n) => {
+                defmt::info!("PacketSink dropped {} packets", n);
+                return;
+            }
+            WaitResult::Message(p) => p,
+        };
         let packet = packet.encode(&mut self.buf).unwrap();
         self.sink.sink(packet).await;
     }

@@ -8,8 +8,8 @@
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
-use embassy_time::Timer;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, pubsub::PubSubChannel};
+use embassy_time::{Duration, Ticker};
 use esp_hal::Async;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::Config;
@@ -23,7 +23,7 @@ use {esp_backtrace as _, esp_println as _};
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static CHANNEL: Channel<CriticalSectionRawMutex, Packet, 1> = Channel::new();
+static CHANNEL: PubSubChannel<CriticalSectionRawMutex, Packet, 4, 2, 1> = PubSubChannel::new();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -37,11 +37,10 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("Embassy initialized!");
 
-    let console_sink = PacketSink::new(CHANNEL.receiver(), ConsoleByteSink);
-    spawner.spawn(console_sink_task(console_sink)).unwrap();
+    let console_sink = PacketSink::new(CHANNEL.subscriber().unwrap(), ConsoleByteSink);
 
     let serial_sink = PacketSink::new(
-        CHANNEL.receiver(),
+        CHANNEL.subscriber().unwrap(),
         SerialByteSink::new(
             Uart::new(peripherals.UART2, Config::default())
                 .unwrap()
@@ -50,18 +49,25 @@ async fn main(spawner: Spawner) -> ! {
                 .into_async(),
         ),
     );
+
+    spawner.spawn(console_sink_task(console_sink)).unwrap();
     spawner.spawn(serial_sink_task(serial_sink)).unwrap();
 
+    let mut tick = Ticker::every(Duration::from_millis(500));
+    let mut counter = 0u32;
+    let publisher = CHANNEL.publisher().unwrap();
+
     loop {
-        CHANNEL
-            .sender()
-            .send(Packet::TmPacket(TmPacket::new(
+        publisher
+            .publish(Packet::TmPacket(TmPacket::new(
                 DeviceId::System,
                 Timestamp::new(10).unwrap(),
-                Payload::from_u8(10),
+                Payload::from_u32(counter),
             )))
             .await;
-        Timer::after_millis(1000).await;
+
+        counter += 1;
+        tick.next().await;
     }
 }
 

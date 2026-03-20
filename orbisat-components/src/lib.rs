@@ -6,7 +6,7 @@ pub struct ConsoleByteSink;
 
 impl ByteSink for ConsoleByteSink {
     async fn sink(&mut self, buf: &[u8]) {
-        defmt::info!("Packet received: {}", buf);
+        defmt::info!("Packet received: {:02X}", buf);
     }
 }
 
@@ -28,6 +28,7 @@ where
     W: embedded_io_async::Write,
 {
     async fn sink(&mut self, buf: &[u8]) {
+        defmt::info!("Uart sending");
         // TODO: proper error handling
         self.0.write_all(buf).await.unwrap();
         self.0.flush().await.unwrap();
