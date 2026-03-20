@@ -4,12 +4,12 @@ use orbipacket::Packet;
 use crate::Component;
 
 pub trait ByteSink {
-    fn sink(&self, buf: &[u8]) -> impl core::future::Future<Output = ()> + Send;
+    fn sink(&self, buf: &[u8]) -> impl Future<Output = ()>;
 }
 
 pub struct PacketSink<S>
 where
-    S: ByteSink + Send + Sync,
+    S: ByteSink,
 {
     recv: Receiver<'static, CriticalSectionRawMutex, Packet, 1>,
     sink: S,
@@ -18,7 +18,7 @@ where
 
 impl<S> PacketSink<S>
 where
-    S: ByteSink + Send + Sync,
+    S: ByteSink,
 {
     pub fn new(
         recv: Receiver<'static, CriticalSectionRawMutex, Packet, 1>,
@@ -34,7 +34,7 @@ where
 
 impl<S> Component for PacketSink<S>
 where
-    S: ByteSink + Send + Sync,
+    S: ByteSink,
 {
     async fn run(&mut self) {
         loop {
