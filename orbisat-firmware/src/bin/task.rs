@@ -42,7 +42,7 @@ async fn main(spawner: Spawner) -> ! {
     let serial_sink = PacketSink::new(
         CHANNEL.subscriber().unwrap(),
         SerialByteSink::new(
-            Uart::new(peripherals.UART2, Config::default())
+            Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
                 .unwrap()
                 .with_rx(peripherals.GPIO12)
                 .with_tx(peripherals.GPIO13)
