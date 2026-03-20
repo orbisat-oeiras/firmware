@@ -1200,6 +1200,7 @@ dependencies = [
  "defmt 1.0.1",
  "embassy-sync 0.7.2",
  "orbipacket",
+ "orbisat-firmware-config",
 ]
 
 [[package]]
@@ -1232,6 +1233,15 @@ dependencies = [
  "orbipacket",
  "orbisat",
  "orbisat-components",
+ "orbisat-firmware-config",
+]
+
+[[package]]
+name = "orbisat-firmware-config"
+version = "0.1.0"
+dependencies = [
+ "embassy-sync 0.7.2",
+ "orbipacket",
 ]
 
 [[package]]

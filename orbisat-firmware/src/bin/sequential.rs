@@ -8,7 +8,6 @@
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, pubsub::PubSubChannel};
 use embassy_time::{Duration, Ticker};
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::Config;
@@ -16,13 +15,14 @@ use esp_hal::{clock::CpuClock, uart::Uart};
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
 use orbisat::{Component, comms::PacketSink};
 use orbisat_components::{ConsoleByteSink, SerialByteSink};
+use orbisat_firmware_config::packet_channel::PacketChannel;
 use {esp_backtrace as _, esp_println as _};
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static CHANNEL: PubSubChannel<CriticalSectionRawMutex, Packet, 4, 2, 1> = PubSubChannel::new();
+static CHANNEL: PacketChannel = PacketChannel::new();
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {

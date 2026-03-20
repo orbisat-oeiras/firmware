@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["orbisat", "orbisat-components", "orbisat-firmware"]
+members = [
+    "orbisat",
+    "orbisat-components",
+    "orbisat-firmware",
+    "orbisat-firmware-config",
+]
 
 [profile.dev]
 # For debug builds always builds with some optimization

@@ -1,8 +1,6 @@
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    pubsub::{Subscriber, WaitResult},
-};
+use embassy_sync::pubsub::WaitResult;
 use orbipacket::Packet;
+use orbisat_firmware_config::packet_channel::PacketChannelSubscriber;
 
 use crate::Component;
 
@@ -14,7 +12,7 @@ pub struct PacketSink<S>
 where
     S: ByteSink,
 {
-    recv: Subscriber<'static, CriticalSectionRawMutex, Packet, 4, 2, 1>,
+    recv: PacketChannelSubscriber<'static>,
     sink: S,
     buf: [u8; Packet::MAX_ENCODE_BUFFER_SIZE],
 }
@@ -23,10 +21,7 @@ impl<S> PacketSink<S>
 where
     S: ByteSink,
 {
-    pub fn new(
-        recv: Subscriber<'static, CriticalSectionRawMutex, Packet, 4, 2, 1>,
-        sink: S,
-    ) -> PacketSink<S> {
+    pub fn new(recv: PacketChannelSubscriber<'static>, sink: S) -> PacketSink<S> {
         Self {
             recv,
             sink,

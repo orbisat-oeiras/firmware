@@ -1,0 +1,9 @@
+[package]
+name = "orbisat-firmware-config"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[dependencies]
+orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git" }
+embassy-sync = "0.7.2"
