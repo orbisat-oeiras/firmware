@@ -34,21 +34,6 @@ impl<S> Component for PacketSink<S>
 where
     S: ByteSink,
 {
-    // TODO: rewrite run in terms of run_once (also add a default impl in the trait?)
-    async fn run(&mut self) {
-        loop {
-            let packet = match self.recv.next_message().await {
-                WaitResult::Lagged(n) => {
-                    defmt::info!("PacketSink dropped {} packets", n);
-                    continue;
-                }
-                WaitResult::Message(p) => p,
-            };
-            let packet = packet.encode(&mut self.buf).unwrap();
-            self.sink.sink(packet).await;
-        }
-    }
-
     async fn run_once(&mut self) {
         let packet = match self.recv.next_message().await {
             WaitResult::Lagged(n) => {
