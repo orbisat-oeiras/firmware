@@ -99,6 +99,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea6d1b751c55bd9c0dda7d4ff752074e98f4765ae969664648bd193bb326d15"
 dependencies = [
+ "defmt 1.0.1",
  "thiserror",
 ]
 
@@ -1200,10 +1201,11 @@ dependencies = [
 [[package]]
 name = "orbipacket"
 version = "0.1.0"
-source = "git+https://github.com/orbisat-oeiras/orbipacket-rs.git#9255111f1fa9ceccae5b425d5c6ba1898cb45a1b"
+source = "git+https://github.com/orbisat-oeiras/orbipacket-rs.git#dacf740da34388b1902e262ee346ccc41d882ccd"
 dependencies = [
  "cobs",
  "crc",
+ "defmt 1.0.1",
  "thiserror",
 ]
 
