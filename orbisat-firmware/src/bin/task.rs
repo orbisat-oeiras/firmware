@@ -95,17 +95,17 @@ async fn main(spawner: Spawner) -> ! {
 
 #[embassy_executor::task]
 async fn console_sink_task(mut sink: PacketSink<ConsoleByteSink>) {
-    sink.run().await;
+    sink.run().await.unwrap();
 }
 
 #[embassy_executor::task]
 async fn serial_sink_task(mut sink: PacketSink<SerialByteSink<UartTx<'static, Async>>>) {
-    sink.run().await;
+    sink.run().await.unwrap();
 }
 
 #[embassy_executor::task]
 async fn serial_source_task(mut source: PacketSource<SerialByteSource<UartRx<'static, Async>>>) {
-    source.run().await;
+    source.run().await.unwrap();
 }
 
 #[embassy_executor::task]
