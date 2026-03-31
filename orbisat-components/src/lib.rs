@@ -6,7 +6,7 @@ pub struct ConsoleByteSink;
 
 impl ByteSink for ConsoleByteSink {
     async fn sink(&mut self, buf: &[u8]) {
-        defmt::info!("Packet received: {:02X}", buf);
+        defmt::info!("Outbound packet: {:02X}", buf);
     }
 }
 
