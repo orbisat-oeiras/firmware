@@ -5,15 +5,17 @@ use orbipacket::DeviceId;
 pub mod comms;
 
 pub trait Component {
+    type Error: core::error::Error;
+
     fn id(&self) -> DeviceId;
 
-    fn run(&mut self) -> impl Future<Output = ()> {
+    fn run(&mut self) -> impl Future<Output = Result<(), Self::Error>> {
         async {
             loop {
-                self.run_once().await;
+                self.run_once().await?;
             }
         }
     }
 
-    fn run_once(&mut self) -> impl Future<Output = ()>;
+    fn run_once(&mut self) -> impl Future<Output = Result<(), Self::Error>>;
 }

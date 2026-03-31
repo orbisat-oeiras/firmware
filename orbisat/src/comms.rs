@@ -1,10 +1,22 @@
 use embassy_sync::pubsub::WaitResult;
-use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
+use orbipacket::{
+    DeviceId, Packet, Payload, Timestamp, TmPacket, decode::DecodeError, encode::EncodeError,
+};
 use orbisat_firmware_config::packet_channel::{
     InboundPacketChannelPublisher, OutboundPacketChannelSubscriber,
 };
 
 use crate::Component;
+
+#[derive(thiserror::Error, Debug)]
+pub enum CommunicationError {
+    #[error("{0} outbound packets were lagged")]
+    OutboundPacketLagged(u64),
+    #[error(transparent)]
+    Encode(#[from] EncodeError),
+    #[error(transparent)]
+    Decode(#[from] DecodeError),
+}
 
 pub trait ByteSink {
     fn sink(&mut self, buf: &[u8]) -> impl Future<Output = ()>;
@@ -36,20 +48,23 @@ impl<S> Component for PacketSink<S>
 where
     S: ByteSink,
 {
+    type Error = CommunicationError;
+
     fn id(&self) -> DeviceId {
         DeviceId::System
     }
 
-    async fn run_once(&mut self) {
+    async fn run_once(&mut self) -> Result<(), Self::Error> {
         let packet = match self.recv.next_message().await {
             WaitResult::Lagged(n) => {
-                defmt::info!("PacketSink dropped {} packets", n);
-                return;
+                return Err(CommunicationError::OutboundPacketLagged(n));
             }
             WaitResult::Message(p) => p,
         };
-        let packet = packet.encode(&mut self.buf).unwrap();
+        let packet = packet.encode(&mut self.buf)?;
         self.sink.sink(packet).await;
+
+        Ok(())
     }
 }
 
@@ -91,23 +106,19 @@ impl<S> Component for PacketSource<S>
 where
     S: ByteSource,
 {
+    type Error = CommunicationError;
+
     fn id(&self) -> DeviceId {
         DeviceId::System
     }
 
-    async fn run_once(&mut self) {
+    async fn run_once(&mut self) -> Result<(), Self::Error> {
         let filled = self.source.fill(&mut self.buf[self.buf_index..]).await;
 
-        let (remaining, packets) = match Packet::decode_stateless(
+        let (remaining, packets) = Packet::decode_stateless(
             &mut self.buf[..self.buf_index + filled],
             &mut self.packet_buf,
-        ) {
-            Ok(r) => r,
-            Err(e) => {
-                defmt::error!("{}", e);
-                panic!()
-            }
-        };
+        )?;
 
         let idx =
             (remaining.as_ptr() as usize - self.buf.as_ptr() as usize) / core::mem::size_of::<u8>();
@@ -117,5 +128,7 @@ where
         for packet in packets {
             self.send.publish(*packet).await;
         }
+
+        Ok(())
     }
 }
