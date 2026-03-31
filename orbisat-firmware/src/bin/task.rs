@@ -18,7 +18,8 @@ use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
 use orbisat_components::{ConsoleByteSink, SerialByteSink, SerialByteSource};
 use orbisat_firmware_config::packet_channel::{
-    PacketChannel, PacketChannelPublisher, PacketChannelSubscriber,
+    InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
+    OutboundPacketChannelPublisher,
 };
 use {esp_backtrace as _, esp_println as _};
 
@@ -26,8 +27,8 @@ use {esp_backtrace as _, esp_println as _};
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static OUTBOUND_PACKET_CHANNEL: PacketChannel = PacketChannel::new();
-static INBOUND_PACKET_CHANNEL: PacketChannel = PacketChannel::new();
+static OUTBOUND_PACKET_CHANNEL: OutboundPacketChannel = OutboundPacketChannel::new();
+static INBOUND_PACKET_CHANNEL: InboundPacketChannel = InboundPacketChannel::new();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -109,8 +110,8 @@ async fn serial_source_task(mut source: PacketSource<SerialByteSource<UartRx<'st
 
 #[embassy_executor::task]
 async fn inbound_packet_task(
-    mut subscriber: PacketChannelSubscriber<'static>,
-    publisher: PacketChannelPublisher<'static>,
+    mut subscriber: InboundPacketChannelSubscriber<'static>,
+    publisher: OutboundPacketChannelPublisher<'static>,
 ) {
     loop {
         match subscriber.next_message().await {

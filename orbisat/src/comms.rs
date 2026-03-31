@@ -1,6 +1,8 @@
 use embassy_sync::pubsub::WaitResult;
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
-use orbisat_firmware_config::packet_channel::{PacketChannelPublisher, PacketChannelSubscriber};
+use orbisat_firmware_config::packet_channel::{
+    InboundPacketChannelPublisher, OutboundPacketChannelSubscriber,
+};
 
 use crate::Component;
 
@@ -12,7 +14,7 @@ pub struct PacketSink<S>
 where
     S: ByteSink,
 {
-    recv: PacketChannelSubscriber<'static>,
+    recv: OutboundPacketChannelSubscriber<'static>,
     sink: S,
     buf: [u8; Packet::MAX_ENCODE_BUFFER_SIZE],
 }
@@ -21,7 +23,7 @@ impl<S> PacketSink<S>
 where
     S: ByteSink,
 {
-    pub fn new(recv: PacketChannelSubscriber<'static>, sink: S) -> PacketSink<S> {
+    pub fn new(recv: OutboundPacketChannelSubscriber<'static>, sink: S) -> PacketSink<S> {
         Self {
             recv,
             sink,
@@ -59,7 +61,7 @@ pub struct PacketSource<S>
 where
     S: ByteSource,
 {
-    send: PacketChannelPublisher<'static>,
+    send: InboundPacketChannelPublisher<'static>,
     source: S,
     buf: [u8; 32],
     buf_index: usize,
@@ -70,7 +72,7 @@ impl<S> PacketSource<S>
 where
     S: ByteSource,
 {
-    pub fn new(send: PacketChannelPublisher<'static>, source: S) -> Self {
+    pub fn new(send: InboundPacketChannelPublisher<'static>, source: S) -> Self {
         Self {
             send,
             source,
