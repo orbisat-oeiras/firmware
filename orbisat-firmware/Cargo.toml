@@ -9,7 +9,9 @@ orbisat = { path = "../orbisat" }
 orbisat-components = { path = "../orbisat-components" }
 orbisat-firmware-config = { path = "../orbisat-firmware-config" }
 
-orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git" }
+orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git", features = [
+    "defmt",
+] }
 
 defmt = "1.0.1"
 

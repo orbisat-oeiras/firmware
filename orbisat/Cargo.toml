@@ -5,7 +5,9 @@ edition = "2024"
 rust-version = "1.88"
 
 [dependencies]
-orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git" }
+orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git", features = [
+    "defmt",
+] }
 orbisat-firmware-config = { path = "../orbisat-firmware-config" }
 
 embassy-sync = "0.7.2"
