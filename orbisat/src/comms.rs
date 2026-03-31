@@ -22,6 +22,7 @@ pub trait ByteSink {
     fn sink(&mut self, buf: &[u8]) -> impl Future<Output = ()>;
 }
 
+#[derive(Debug)]
 pub struct PacketSink<S>
 where
     S: ByteSink,
@@ -72,6 +73,7 @@ pub trait ByteSource {
     fn fill(&mut self, buf: &mut [u8]) -> impl Future<Output = usize>;
 }
 
+#[derive(Debug)]
 pub struct PacketSource<S>
 where
     S: ByteSource,

@@ -2,6 +2,7 @@
 
 use orbisat::comms::{ByteSink, ByteSource};
 
+#[derive(Debug)]
 pub struct ConsoleByteSink;
 
 impl ByteSink for ConsoleByteSink {
@@ -10,6 +11,7 @@ impl ByteSink for ConsoleByteSink {
     }
 }
 
+#[derive(Debug)]
 pub struct SerialByteSink<W>(W)
 where
     W: embedded_io_async::Write;
@@ -35,6 +37,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct SerialByteSource<R>(R)
 where
     R: embedded_io_async::Read;
