@@ -16,19 +16,17 @@ use esp_hal::{clock::CpuClock, uart::Uart};
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
 use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
+use orbisat::{Context, ContextHandle};
 use orbisat_components::{ConsoleByteSink, SerialByteSink, SerialByteSource};
-use orbisat_firmware_config::packet_channel::{
-    InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
-    OutboundPacketChannelPublisher,
-};
+use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
+use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static OUTBOUND_PACKET_CHANNEL: OutboundPacketChannel = OutboundPacketChannel::new();
-static INBOUND_PACKET_CHANNEL: InboundPacketChannel = InboundPacketChannel::new();
+static CONTEXT: StaticCell<Context> = StaticCell::new();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -42,10 +40,12 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("Embassy initialized!");
 
-    let console_sink = PacketSink::new(
-        OUTBOUND_PACKET_CHANNEL.subscriber().unwrap(),
-        ConsoleByteSink,
-    );
+    let ctx = CONTEXT.init(Context::new(
+        InboundPacketChannel::new(),
+        OutboundPacketChannel::new(),
+    ));
+
+    let console_sink = PacketSink::new(ctx.outbound().subscriber().unwrap(), ConsoleByteSink);
 
     let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
         .unwrap()
@@ -55,33 +55,35 @@ async fn main(spawner: Spawner) -> ! {
         .split();
 
     let serial_sink = PacketSink::new(
-        OUTBOUND_PACKET_CHANNEL.subscriber().unwrap(),
+        ctx.outbound().subscriber().unwrap(),
         SerialByteSink::new(uart_tx),
     );
 
     let serial_source = PacketSource::new(
-        INBOUND_PACKET_CHANNEL.publisher().unwrap(),
+        ctx.inbound().publisher().unwrap(),
         SerialByteSource::new(uart_rx),
     );
 
     let mut tick = Ticker::every(Duration::from_millis(500));
     let mut counter = 0u32;
-    let publisher = OUTBOUND_PACKET_CHANNEL.publisher().unwrap();
-    let subscriber = INBOUND_PACKET_CHANNEL.subscriber().unwrap();
+    let ctx_handle = ctx.to_handle().unwrap();
 
-    spawner.spawn(console_sink_task(console_sink)).unwrap();
-    spawner.spawn(serial_sink_task(serial_sink)).unwrap();
-    spawner.spawn(serial_source_task(serial_source)).unwrap();
     spawner
-        .spawn(inbound_packet_task(
-            subscriber,
-            OUTBOUND_PACKET_CHANNEL.publisher().unwrap(),
-        ))
+        .spawn(console_sink_task(console_sink, ctx.to_handle().unwrap()))
+        .unwrap();
+    spawner
+        .spawn(serial_sink_task(serial_sink, ctx.to_handle().unwrap()))
+        .unwrap();
+    spawner
+        .spawn(serial_source_task(serial_source, ctx.to_handle().unwrap()))
+        .unwrap();
+    spawner
+        .spawn(inbound_packet_task(ctx.to_handle().unwrap()))
         .unwrap();
 
     loop {
-        publisher
-            .publish(Packet::TmPacket(TmPacket::new(
+        ctx_handle
+            .send_outbound(Packet::TmPacket(TmPacket::new(
                 DeviceId::System,
                 Timestamp::new(10).unwrap(),
                 Payload::from_u32(counter),
@@ -94,27 +96,30 @@ async fn main(spawner: Spawner) -> ! {
 }
 
 #[embassy_executor::task]
-async fn console_sink_task(mut sink: PacketSink<ConsoleByteSink>) {
-    sink.run().await.unwrap();
+async fn console_sink_task(mut sink: PacketSink<ConsoleByteSink>, mut ctx: ContextHandle<'static>) {
+    sink.run(&mut ctx).await.unwrap();
 }
 
 #[embassy_executor::task]
-async fn serial_sink_task(mut sink: PacketSink<SerialByteSink<UartTx<'static, Async>>>) {
-    sink.run().await.unwrap();
-}
-
-#[embassy_executor::task]
-async fn serial_source_task(mut source: PacketSource<SerialByteSource<UartRx<'static, Async>>>) {
-    source.run().await.unwrap();
-}
-
-#[embassy_executor::task]
-async fn inbound_packet_task(
-    mut subscriber: InboundPacketChannelSubscriber<'static>,
-    publisher: OutboundPacketChannelPublisher<'static>,
+async fn serial_sink_task(
+    mut sink: PacketSink<SerialByteSink<UartTx<'static, Async>>>,
+    mut ctx: ContextHandle<'static>,
 ) {
+    sink.run(&mut ctx).await.unwrap();
+}
+
+#[embassy_executor::task]
+async fn serial_source_task(
+    mut source: PacketSource<SerialByteSource<UartRx<'static, Async>>>,
+    mut ctx: ContextHandle<'static>,
+) {
+    source.run(&mut ctx).await.unwrap();
+}
+
+#[embassy_executor::task]
+async fn inbound_packet_task(mut ctx: ContextHandle<'static>) {
     loop {
-        match subscriber.next_message().await {
+        match ctx.receive_inbound().await {
             embassy_sync::pubsub::WaitResult::Lagged(_) => {}
             embassy_sync::pubsub::WaitResult::Message(packet) => match packet {
                 Packet::TmPacket(_) => continue,
@@ -134,13 +139,12 @@ async fn inbound_packet_task(
                         let payload = [t0.to_le_bytes(), t1.to_le_bytes(), t2.to_le_bytes()];
                         let payload: [u8; 3 * 8] = unsafe { core::mem::transmute(payload) };
 
-                        publisher
-                            .publish(Packet::TmPacket(TmPacket::new(
-                                DeviceId::TimeSync,
-                                Timestamp::new(10).unwrap(),
-                                Payload::from_raw_bytes(payload).unwrap(),
-                            )))
-                            .await;
+                        ctx.send_outbound(Packet::TmPacket(TmPacket::new(
+                            DeviceId::TimeSync,
+                            Timestamp::new(10).unwrap(),
+                            Payload::from_raw_bytes(payload).unwrap(),
+                        )))
+                        .await;
                     }
                 }
             },

@@ -6,7 +6,7 @@ use orbisat_firmware_config::packet_channel::{
     InboundPacketChannelPublisher, OutboundPacketChannelSubscriber,
 };
 
-use crate::Component;
+use crate::{Component, ContextHandle};
 
 #[derive(thiserror::Error, Debug)]
 pub enum CommunicationError {
@@ -55,7 +55,7 @@ where
         DeviceId::System
     }
 
-    async fn run_once(&mut self) -> Result<(), Self::Error> {
+    async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
         let packet = match self.recv.next_message().await {
             WaitResult::Lagged(n) => {
                 return Err(CommunicationError::OutboundPacketLagged(n));
@@ -114,7 +114,7 @@ where
         DeviceId::System
     }
 
-    async fn run_once(&mut self) -> Result<(), Self::Error> {
+    async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
         let filled = self.source.fill(&mut self.buf[self.buf_index..]).await;
 
         let (remaining, packets) = Packet::decode_stateless(

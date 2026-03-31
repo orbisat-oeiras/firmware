@@ -3,7 +3,7 @@
 pub mod packet_channel {
     pub type Mutex = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
-    pub const COMPONENT_COUNT: usize = 2;
+    pub const COMPONENT_COUNT: usize = 5;
     pub const SINK_COUNT: usize = 2;
     pub const CAP: usize = 4;
 
