@@ -1251,6 +1251,7 @@ dependencies = [
  "orbisat",
  "orbisat-components",
  "orbisat-firmware-config",
+ "paste",
  "static_cell",
 ]
 

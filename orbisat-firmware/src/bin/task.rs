@@ -18,6 +18,7 @@ use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
 use orbisat::{Context, ContextHandle};
 use orbisat_components::{ConsoleByteSink, SerialByteSink, SerialByteSource};
+use orbisat_firmware::components;
 use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
@@ -45,8 +46,6 @@ async fn main(spawner: Spawner) -> ! {
         OutboundPacketChannel::new(),
     ));
 
-    let console_sink = PacketSink::new(ctx.outbound().subscriber().unwrap(), ConsoleByteSink);
-
     let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
         .unwrap()
         .with_rx(peripherals.GPIO12)
@@ -54,29 +53,23 @@ async fn main(spawner: Spawner) -> ! {
         .into_async()
         .split();
 
-    let serial_sink = PacketSink::new(
-        ctx.outbound().subscriber().unwrap(),
-        SerialByteSink::new(uart_tx),
-    );
-
-    let serial_source = PacketSource::new(
-        ctx.inbound().publisher().unwrap(),
-        SerialByteSource::new(uart_rx),
-    );
-
     let mut tick = Ticker::every(Duration::from_millis(500));
     let mut counter = 0u32;
     let ctx_handle = ctx.to_handle().unwrap();
 
-    spawner
-        .spawn(console_sink_task(console_sink, ctx.to_handle().unwrap()))
-        .unwrap();
-    spawner
-        .spawn(serial_sink_task(serial_sink, ctx.to_handle().unwrap()))
-        .unwrap();
-    spawner
-        .spawn(serial_source_task(serial_source, ctx.to_handle().unwrap()))
-        .unwrap();
+    components! {
+        (spawner, ctx) {
+            console_sink: PacketSink<ConsoleByteSink> = (ctx.outbound().subscriber().unwrap(), ConsoleByteSink);
+            serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
+                ctx.outbound().subscriber().unwrap(), SerialByteSink::new(uart_tx),
+            );
+            serial_source: PacketSource<SerialByteSource<UartRx<'static, Async>>> = (
+                ctx.inbound().publisher().unwrap(),
+                SerialByteSource::new(uart_rx),
+            );
+        }
+    }
+
     spawner
         .spawn(inbound_packet_task(ctx.to_handle().unwrap()))
         .unwrap();
@@ -93,27 +86,6 @@ async fn main(spawner: Spawner) -> ! {
         counter += 1;
         tick.next().await;
     }
-}
-
-#[embassy_executor::task]
-async fn console_sink_task(mut sink: PacketSink<ConsoleByteSink>, mut ctx: ContextHandle<'static>) {
-    sink.run(&mut ctx).await.unwrap();
-}
-
-#[embassy_executor::task]
-async fn serial_sink_task(
-    mut sink: PacketSink<SerialByteSink<UartTx<'static, Async>>>,
-    mut ctx: ContextHandle<'static>,
-) {
-    sink.run(&mut ctx).await.unwrap();
-}
-
-#[embassy_executor::task]
-async fn serial_source_task(
-    mut source: PacketSource<SerialByteSource<UartRx<'static, Async>>>,
-    mut ctx: ContextHandle<'static>,
-) {
-    source.run(&mut ctx).await.unwrap();
 }
 
 #[embassy_executor::task]
