@@ -1,6 +1,6 @@
 #![no_std]
 
-use orbisat::comms::ByteSink;
+use orbisat::comms::{ByteSink, ByteSource};
 
 pub struct ConsoleByteSink;
 
@@ -32,5 +32,28 @@ where
         // TODO: proper error handling
         self.0.write_all(buf).await.unwrap();
         self.0.flush().await.unwrap();
+    }
+}
+
+pub struct SerialByteSource<R>(R)
+where
+    R: embedded_io_async::Read;
+
+impl<R> SerialByteSource<R>
+where
+    R: embedded_io_async::Read,
+{
+    pub fn new(read: R) -> Self {
+        Self(read)
+    }
+}
+
+impl<R> ByteSource for SerialByteSource<R>
+where
+    R: embedded_io_async::Read,
+{
+    async fn fill(&mut self, buf: &mut [u8]) -> usize {
+        // TODO: error handling
+        self.0.read(buf).await.unwrap()
     }
 }
