@@ -105,7 +105,9 @@ pub trait Component {
         ctx: &mut ContextHandle<'_>,
     ) -> impl Future<Output = Result<(), Self::Error>> {
         async {
+            defmt::info!("Component {} started running", self.id());
             loop {
+                self.receive_tc(ctx).await?;
                 self.run_once(ctx).await?;
             }
         }
