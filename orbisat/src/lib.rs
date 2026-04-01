@@ -2,12 +2,16 @@
 
 use core::{error::Error, fmt::Display};
 
-use embassy_sync::pubsub::{publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture};
-use orbipacket::{DeviceId, Packet};
+use embassy_sync::pubsub::{
+    WaitResult, publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture,
+};
+use orbipacket::{DeviceId, Packet, TcPacket};
 use orbisat_firmware_config::packet_channel::{
     InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
     OutboundPacketChannelPublisher,
 };
+
+use crate::comms::CommunicationError;
 
 pub mod comms;
 
@@ -85,10 +89,14 @@ impl<'a> ContextHandle<'a> {
     ) -> PublisherWaitFuture<'s, 'a, OutboundPacketChannel, Packet> {
         self.outbound.publish(message)
     }
+
+    pub fn receive_inbound_immediate(&mut self) -> Option<WaitResult<Packet>> {
+        self.inbound.try_next_message()
+    }
 }
 
 pub trait Component {
-    type Error: core::error::Error;
+    type Error: core::error::Error + From<CommunicationError>;
 
     fn id(&self) -> DeviceId;
 
@@ -103,8 +111,45 @@ pub trait Component {
         }
     }
 
+    fn receive_tc(
+        &mut self,
+        ctx: &mut ContextHandle<'_>,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        async {
+            while let Some(r) = ctx.receive_inbound_immediate() {
+                let packet = match r {
+                    WaitResult::Lagged(n) => {
+                        return Err(CommunicationError::InboundPacketLagged(n).into());
+                    }
+                    WaitResult::Message(p) => p,
+                };
+
+                match packet {
+                    Packet::TmPacket(_) => {
+                        return Err(CommunicationError::InboundTmPacket.into());
+                    }
+                    Packet::TcPacket(tc_packet) => {
+                        if *tc_packet.device_id() == self.id() {
+                            self.handle_tc(ctx, tc_packet).await?;
+                        }
+                    }
+                };
+            }
+
+            Ok(())
+        }
+    }
+
     fn run_once(
         &mut self,
         ctx: &mut ContextHandle<'_>,
     ) -> impl Future<Output = Result<(), Self::Error>>;
+
+    fn handle_tc(
+        &mut self,
+        _ctx: &mut ContextHandle<'_>,
+        _tc: TcPacket,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        async { Ok(()) }
+    }
 }

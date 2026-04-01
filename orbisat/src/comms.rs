@@ -12,10 +12,14 @@ use crate::{Component, ContextHandle};
 pub enum CommunicationError {
     #[error("{0} outbound packets were lagged")]
     OutboundPacketLagged(u64),
+    #[error("{0} Inbound packets were lagged")]
+    InboundPacketLagged(u64),
     #[error(transparent)]
     Encode(#[from] EncodeError),
     #[error(transparent)]
     Decode(#[from] DecodeError),
+    #[error("received an inbound telemetry packet")]
+    InboundTmPacket,
 }
 
 pub trait ByteSink {
