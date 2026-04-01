@@ -11,7 +11,10 @@ orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git", feat
 ] }
 
 embassy-sync = "0.7.2"
+embassy-time = { version = "0.5.0", features = ["defmt"] }
 defmt = "1.0.1"
+
+thiserror = { version = "2.0.18", default-features = false }
 
 ### Components
 bme280 = { version = "0.5.1", features = ["defmt"] }

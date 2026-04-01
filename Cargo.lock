@@ -1227,11 +1227,13 @@ dependencies = [
  "bme280",
  "defmt 1.0.1",
  "embassy-sync 0.7.2",
+ "embassy-time",
  "embedded-io-async 0.7.0",
  "mma8x5x",
  "nmea",
  "orbipacket",
  "orbisat",
+ "thiserror",
 ]
 
 [[package]]
