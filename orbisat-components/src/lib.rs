@@ -97,6 +97,7 @@ impl Component for TimeSyncComponent {
     }
 
     async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+        embassy_futures::yield_now().await;
         Ok(())
     }
 
