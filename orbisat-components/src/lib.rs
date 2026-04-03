@@ -1,7 +1,7 @@
 #![no_std]
 
 use embassy_time::Instant;
-use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
+use orbipacket::{DeviceId, Payload};
 use orbisat::{
     Component,
     comms::{ByteSink, ByteSource, CommunicationError},
@@ -124,11 +124,11 @@ impl Component for TimeSyncComponent {
         payload[8..16].copy_from_slice(&t1.to_le_bytes());
         payload[16..24].copy_from_slice(&t2.to_le_bytes());
 
-        ctx.send_outbound(Packet::TmPacket(TmPacket::new(
+        ctx.send_outbound(
             DeviceId::TimeSync,
-            Timestamp::new(10).unwrap(),
             Payload::from_raw_bytes(payload).unwrap(),
-        )))
+        )
+        .map_err(Into::<CommunicationError>::into)?
         .await;
 
         Ok(())

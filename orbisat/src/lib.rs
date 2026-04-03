@@ -5,7 +5,8 @@ use core::{error::Error, fmt::Display};
 use embassy_sync::pubsub::{
     WaitResult, publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture,
 };
-use orbipacket::{DeviceId, Packet, TcPacket};
+use embassy_time::Instant;
+use orbipacket::{DeviceId, Packet, Payload, TcPacket, Timestamp, TimestampError, TmPacket};
 use orbisat_firmware_config::packet_channel::{
     InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
     OutboundPacketChannelPublisher,
@@ -83,11 +84,23 @@ impl<'a> ContextHandle<'a> {
         self.inbound.next_message()
     }
 
-    pub fn send_outbound<'s>(
+    pub fn send_outbound_raw<'s>(
         &'s self,
         message: Packet,
     ) -> PublisherWaitFuture<'s, 'a, OutboundPacketChannel, Packet> {
         self.outbound.publish(message)
+    }
+
+    pub fn send_outbound<'s>(
+        &'s self,
+        id: DeviceId,
+        payload: Payload,
+    ) -> Result<PublisherWaitFuture<'s, 'a, OutboundPacketChannel, Packet>, TimestampError> {
+        Ok(self.send_outbound_raw(Packet::TmPacket(TmPacket::new(
+            id,
+            Timestamp::new(Instant::now().as_micros())?,
+            payload,
+        ))))
     }
 
     pub fn receive_inbound_immediate(&mut self) -> Option<WaitResult<Packet>> {

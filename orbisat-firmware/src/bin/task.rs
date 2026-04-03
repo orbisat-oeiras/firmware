@@ -13,7 +13,7 @@ use esp_hal::Async;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{Config, UartRx, UartTx};
 use esp_hal::{clock::CpuClock, uart::Uart};
-use orbipacket::{DeviceId, Packet, Payload, Timestamp, TmPacket};
+use orbipacket::{DeviceId, Payload};
 use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
 use orbisat::{Context, ContextHandle};
@@ -84,11 +84,8 @@ async fn main(spawner: Spawner) -> ! {
 
     loop {
         ctx_handle
-            .send_outbound(Packet::TmPacket(TmPacket::new(
-                DeviceId::System,
-                Timestamp::new(10).unwrap(),
-                Payload::from_u32(counter),
-            )))
+            .send_outbound(DeviceId::System, Payload::from_u32(counter))
+            .unwrap()
             .await;
 
         counter += 1;

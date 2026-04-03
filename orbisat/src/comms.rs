@@ -1,6 +1,7 @@
 use embassy_sync::pubsub::WaitResult;
 use orbipacket::{
-    DeviceId, Packet, Payload, Timestamp, TmPacket, decode::DecodeError, encode::EncodeError,
+    DeviceId, Packet, Payload, Timestamp, TimestampError, TmPacket, decode::DecodeError,
+    encode::EncodeError,
 };
 use orbisat_firmware_config::packet_channel::{
     InboundPacketChannelPublisher, OutboundPacketChannelSubscriber,
@@ -20,6 +21,8 @@ pub enum CommunicationError {
     Decode(#[from] DecodeError),
     #[error("received an inbound telemetry packet")]
     InboundTmPacket,
+    #[error(transparent)]
+    Timestamp(#[from] TimestampError),
 }
 
 pub trait ByteSink {
