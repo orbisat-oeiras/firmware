@@ -46,10 +46,19 @@ async fn main(spawner: Spawner) -> ! {
         OutboundPacketChannel::new(),
     ));
 
+    #[cfg(feature = "esp32")]
     let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
         .unwrap()
         .with_rx(peripherals.GPIO12)
         .with_tx(peripherals.GPIO13)
+        .into_async()
+        .split();
+
+    #[cfg(feature = "esp32s3")]
+    let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
+        .unwrap()
+        .with_rx(peripherals.GPIO1)
+        .with_tx(peripherals.GPIO2)
         .into_async()
         .split();
 
