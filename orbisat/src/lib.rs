@@ -15,6 +15,7 @@ use orbisat_firmware_config::packet_channel::{
 use crate::comms::CommunicationError;
 
 pub mod comms;
+pub mod sensor;
 
 #[derive(Debug)]
 pub enum ContextError {
