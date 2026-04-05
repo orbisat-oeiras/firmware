@@ -8,7 +8,7 @@
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Delay, Duration, Ticker};
 use esp_hal::Async;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{Config, UartRx, UartTx};
@@ -44,6 +44,7 @@ async fn main(spawner: Spawner) -> ! {
     let ctx = CONTEXT.init(Context::new(
         InboundPacketChannel::new(),
         OutboundPacketChannel::new(),
+        Delay,
     ));
 
     #[cfg(feature = "esp32")]
