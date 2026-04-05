@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod primary;
+
 use embassy_time::Instant;
 use orbipacket::{DeviceId, Payload};
 use orbisat::{
