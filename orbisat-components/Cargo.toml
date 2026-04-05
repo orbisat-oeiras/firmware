@@ -17,8 +17,13 @@ defmt = "1.0.1"
 thiserror = { version = "2.0.18", default-features = false }
 
 ### Components
-bme280 = { version = "0.5.1", features = ["defmt"] }
+bme280 = { version = "0.5.1", features = [
+    "defmt",
+    "async",
+], default-features = false }
 mma8x5x = { git = "https://github.com/eldruin/mma8x5x-rs", version = "0.1.1" }
 nmea = { version = "0.7.0", features = ["GNSS"], default-features = false }
 embedded-io-async = "0.7.0"
 embassy-futures = "0.1.2"
+embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
