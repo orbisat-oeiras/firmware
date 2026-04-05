@@ -33,6 +33,8 @@ static CONTEXT: StaticCell<Context> = StaticCell::new();
 async fn main(spawner: Spawner) -> ! {
     // generator version: 1.0.1
 
+    // INITIALIZE EMBASSY
+
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
@@ -41,11 +43,7 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("Embassy initialized!");
 
-    let ctx = CONTEXT.init(Context::new(
-        InboundPacketChannel::new(),
-        OutboundPacketChannel::new(),
-        Delay,
-    ));
+    // CONFIGURE PERIPHERALS
 
     #[cfg(feature = "esp32")]
     let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
@@ -63,9 +61,15 @@ async fn main(spawner: Spawner) -> ! {
         .into_async()
         .split();
 
-    let mut tick = Ticker::every(Duration::from_millis(500));
-    let mut counter = 0u32;
-    let ctx_handle = ctx.to_handle().unwrap();
+    // CREATE CONTEXT
+
+    let ctx = CONTEXT.init(Context::new(
+        InboundPacketChannel::new(),
+        OutboundPacketChannel::new(),
+        Delay,
+    ));
+
+    // SPAWN COMPONENT TASKS
 
     components! {
         (spawner, ctx) {
@@ -82,6 +86,12 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     info!("Components initialized");
+
+    // MAIN TASK
+
+    let mut tick = Ticker::every(Duration::from_millis(500));
+    let mut counter = 0u32;
+    let ctx_handle = ctx.to_handle().unwrap();
 
     loop {
         ctx_handle
