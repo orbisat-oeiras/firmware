@@ -124,6 +124,12 @@ pub struct Bme280TemperatureSensor<I2C: i2c::I2c, M: RawMutex> {
     inner: Mutex<M, Bme280Device<I2C>>,
 }
 
+impl<I2C: i2c::I2c, M: RawMutex> Bme280TemperatureSensor<I2C, M> {
+    pub fn new(inner: Mutex<M, Bme280Device<I2C>>) -> Self {
+        Self { inner }
+    }
+}
+
 impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Temperature>
     for Bme280TemperatureSensor<I2C, M>
 {
@@ -158,6 +164,12 @@ pub struct Bme280PressureSensor<I2C: i2c::I2c, M: RawMutex> {
     inner: Mutex<M, Bme280Device<I2C>>,
 }
 
+impl<I2C: i2c::I2c, M: RawMutex> Bme280PressureSensor<I2C, M> {
+    pub fn new(inner: Mutex<M, Bme280Device<I2C>>) -> Self {
+        Self { inner }
+    }
+}
+
 impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Pressure>
     for Bme280PressureSensor<I2C, M>
 {
@@ -190,6 +202,12 @@ impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component for Bme280Pressure
 #[derive(Debug)]
 pub struct Bme280HumiditySensor<I2C: i2c::I2c, M: RawMutex> {
     inner: Mutex<M, Bme280Device<I2C>>,
+}
+
+impl<I2C: i2c::I2c, M: RawMutex> Bme280HumiditySensor<I2C, M> {
+    pub fn new(inner: Mutex<M, Bme280Device<I2C>>) -> Self {
+        Self { inner }
+    }
 }
 
 impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Humidity>
