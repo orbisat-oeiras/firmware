@@ -1,6 +1,10 @@
 use bme280::i2c::AsyncBME280;
-use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::{self, raw::RawMutex},
+    mutex::Mutex,
+};
 use embedded_hal_async::{delay::DelayNs, i2c};
+use heapless::Deque;
 use orbipacket::{DeviceId, TimestampError};
 use orbisat::{
     Component, ContextHandle,
@@ -15,8 +19,8 @@ use orbisat::{
 pub enum Bme280Error<I2C: i2c::ErrorType> {
     #[error(transparent)]
     Communication(#[from] CommunicationError),
-    #[error("a measurement is needed but values are still available")]
-    UnusedMeasurement,
+    #[error("buffer for {0} measurements is full")]
+    FullBuffer(&'static str),
     #[error("i2c error: {0:?}")]
     I2c(bme280::Error<I2C::Error>),
 }
@@ -39,9 +43,9 @@ where
     I2C: i2c::I2c,
 {
     driver: AsyncBME280<I2C>,
-    latest_temperature: Option<Temperature>,
-    latest_pressure: Option<Pressure>,
-    latest_humidity: Option<Humidity>,
+    temperature: Deque<Temperature, 16>,
+    pressure: Deque<Pressure, 16>,
+    humidity: Deque<Humidity, 16>,
     initialized: bool,
 }
 
@@ -53,9 +57,9 @@ where
         let driver = AsyncBME280::new_primary(i2c);
         Self {
             driver,
-            latest_temperature: None,
-            latest_pressure: None,
-            latest_humidity: None,
+            temperature: Deque::new(),
+            pressure: Deque::new(),
+            humidity: Deque::new(),
             initialized: false,
         }
     }
@@ -73,48 +77,42 @@ where
         &mut self,
         delay: &mut D,
     ) -> Result<Temperature, Bme280Error<I2C>> {
-        if self.latest_temperature.is_none() {
-            if self.latest_pressure.is_some() || self.latest_humidity.is_some() {
-                return Err(Bme280Error::UnusedMeasurement);
-            } else {
+        match self.temperature.pop_front() {
+            Some(m) => Ok(m),
+            None => {
                 self.measure(delay).await?;
+                // SAFETY: measure fills the deque
+                Ok(unsafe { self.temperature.pop_front_unchecked() })
             }
         }
-
-        // Unwrapping is safe because latest_temperature must be Some at this point
-        Ok(self.latest_temperature.take().unwrap())
     }
 
     pub async fn get_pressure_measurement<D: DelayNs>(
         &mut self,
         delay: &mut D,
     ) -> Result<Pressure, Bme280Error<I2C>> {
-        if self.latest_pressure.is_none() {
-            if self.latest_temperature.is_some() || self.latest_humidity.is_some() {
-                return Err(Bme280Error::UnusedMeasurement);
-            } else {
+        match self.pressure.pop_front() {
+            Some(m) => Ok(m),
+            None => {
                 self.measure(delay).await?;
+                // SAFETY: measure fills the deque
+                Ok(unsafe { self.pressure.pop_front_unchecked() })
             }
         }
-
-        // Unwrapping is safe because latest_pressure must be Some at this point
-        Ok(self.latest_pressure.take().unwrap())
     }
 
     pub async fn get_humidity_measurement<D: DelayNs>(
         &mut self,
         delay: &mut D,
     ) -> Result<Humidity, Bme280Error<I2C>> {
-        if self.latest_humidity.is_none() {
-            if self.latest_temperature.is_some() || self.latest_pressure.is_some() {
-                return Err(Bme280Error::UnusedMeasurement);
-            } else {
+        match self.humidity.pop_front() {
+            Some(m) => Ok(m),
+            None => {
                 self.measure(delay).await?;
+                // SAFETY: measure fills the deque
+                Ok(unsafe { self.humidity.pop_front_unchecked() })
             }
         }
-
-        // Unwrapping is safe because latest_humidity must be Some at this point
-        Ok(self.latest_humidity.take().unwrap())
     }
 
     async fn measure<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), Bme280Error<I2C>> {
@@ -123,31 +121,38 @@ where
         }
 
         let measurement = self.driver.measure(delay).await?;
-        self.latest_temperature = Some(measurement.temperature.into());
-        self.latest_pressure = Some(measurement.pressure.into());
-        self.latest_humidity = Some(measurement.humidity.into());
+
+        self.temperature
+            .push_back(measurement.temperature.into())
+            .map_err(|_| Bme280Error::<I2C>::FullBuffer("temperature"))?;
+        self.pressure
+            .push_back(measurement.pressure.into())
+            .map_err(|_| Bme280Error::<I2C>::FullBuffer("pressure"))?;
+        self.humidity
+            .push_back(measurement.humidity.into())
+            .map_err(|_| Bme280Error::<I2C>::FullBuffer("humidity"))?;
         Ok(())
     }
 }
 
 #[derive(Debug)]
-pub struct Bme280TemperatureSensor<'a, I2C: i2c::I2c, M: RawMutex> {
-    inner: &'a Mutex<M, Bme280Device<I2C>>,
+pub struct Bme280TemperatureSensor<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> {
+    device: &'a Mutex<M, Bme280Device<I2C>>,
 }
 
-impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280TemperatureSensor<'a, I2C, M> {
-    pub fn new(inner: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
-        Self { inner }
+impl<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> Bme280TemperatureSensor<'a, I2C, M> {
+    pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
+        Self { device }
     }
 }
 
-impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Temperature>
+impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: blocking_mutex::raw::RawMutex> Sensor<Temperature>
     for Bme280TemperatureSensor<'a, I2C, M>
 {
     type Error = Bme280Error<I2C>;
 
     async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Temperature, Self::Error> {
-        self.inner
+        self.device
             .lock()
             .await
             .get_temperature_measurement(ctx.delay_mut())
@@ -174,12 +179,12 @@ impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
 
 #[derive(Debug)]
 pub struct Bme280PressureSensor<'a, I2C: i2c::I2c, M: RawMutex> {
-    inner: &'a Mutex<M, Bme280Device<I2C>>,
+    device: &'a Mutex<M, Bme280Device<I2C>>,
 }
 
 impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280PressureSensor<'a, I2C, M> {
-    pub fn new(inner: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
-        Self { inner }
+    pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
+        Self { device }
     }
 }
 
@@ -189,7 +194,7 @@ impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Pressure>
     type Error = Bme280Error<I2C>;
 
     async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Pressure, Self::Error> {
-        self.inner
+        self.device
             .lock()
             .await
             .get_pressure_measurement(ctx.delay_mut())
@@ -216,12 +221,12 @@ impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
 
 #[derive(Debug)]
 pub struct Bme280HumiditySensor<'a, I2C: i2c::I2c, M: RawMutex> {
-    inner: &'a Mutex<M, Bme280Device<I2C>>,
+    device: &'a Mutex<M, Bme280Device<I2C>>,
 }
 
 impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280HumiditySensor<'a, I2C, M> {
-    pub fn new(inner: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
-        Self { inner }
+    pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
+        Self { device }
     }
 }
 
@@ -231,7 +236,7 @@ impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Humidity>
     type Error = Bme280Error<I2C>;
 
     async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Humidity, Self::Error> {
-        self.inner
+        self.device
             .lock()
             .await
             .get_humidity_measurement(ctx.delay_mut())
