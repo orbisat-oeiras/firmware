@@ -42,6 +42,7 @@ where
     latest_temperature: Option<Temperature>,
     latest_pressure: Option<Pressure>,
     latest_humidity: Option<Humidity>,
+    initialized: bool,
 }
 
 impl<I2C> Bme280Device<I2C>
@@ -55,6 +56,7 @@ where
             latest_temperature: None,
             latest_pressure: None,
             latest_humidity: None,
+            initialized: false,
         }
     }
 
@@ -62,7 +64,9 @@ where
         &mut self,
         delay: &mut D,
     ) -> Result<(), bme280::Error<I2C::Error>> {
-        self.driver.init(delay).await
+        self.driver.init(delay).await?;
+        self.initialized = true;
+        Ok(())
     }
 
     pub async fn get_temperature_measurement<D: DelayNs>(
@@ -114,6 +118,10 @@ where
     }
 
     async fn measure<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), Bme280Error<I2C>> {
+        if !self.initialized {
+            self.init(delay).await?;
+        }
+
         let measurement = self.driver.measure(delay).await?;
         self.latest_temperature = Some(measurement.temperature.into());
         self.latest_pressure = Some(measurement.pressure.into());
