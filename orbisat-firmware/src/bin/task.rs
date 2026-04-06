@@ -9,13 +9,12 @@
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::{Delay, Duration, Ticker};
+use embassy_time::{Delay, Duration};
 use esp_hal::Async;
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{Config as UartConfig, UartRx, UartTx};
 use esp_hal::{clock::CpuClock, uart::Uart};
-use orbipacket::{DeviceId, Payload};
 use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
 use orbisat::{Context, ContextHandle};
@@ -35,7 +34,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 static CONTEXT: StaticCell<Context> = StaticCell::new();
 
 #[esp_rtos::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) {
     // generator version: 1.0.1
 
     // INITIALIZE EMBASSY
@@ -117,22 +116,4 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     info!("Components initialized");
-
-    // MAIN TASK
-
-    let mut tick = Ticker::every(Duration::from_millis(500));
-    let mut counter = 0u32;
-    let ctx_handle = ctx
-        .to_handle()
-        .expect("context should be convertible to a handle");
-
-    loop {
-        ctx_handle
-            .send_outbound(DeviceId::System, Payload::from_u32(counter))
-            .expect("should be able to send outbound")
-            .await;
-
-        counter += 1;
-        tick.next().await;
-    }
 }
