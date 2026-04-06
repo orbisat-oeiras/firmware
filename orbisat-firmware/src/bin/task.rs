@@ -8,15 +8,20 @@
 
 use defmt::info;
 use embassy_executor::Spawner;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration, Ticker};
 use esp_hal::Async;
+use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::uart::{Config, UartRx, UartTx};
+use esp_hal::uart::{Config as UartConfig, UartRx, UartTx};
 use esp_hal::{clock::CpuClock, uart::Uart};
 use orbipacket::{DeviceId, Payload};
 use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
 use orbisat::{Context, ContextHandle};
+use orbisat_components::primary::{
+    Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor,
+};
 use orbisat_components::{ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent};
 use orbisat_firmware::components;
 use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
@@ -46,20 +51,38 @@ async fn main(spawner: Spawner) -> ! {
     // CONFIGURE PERIPHERALS
 
     #[cfg(feature = "esp32")]
-    let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
-        .expect("should be able to construct a Uart")
-        .with_rx(peripherals.GPIO12)
-        .with_tx(peripherals.GPIO13)
-        .into_async()
-        .split();
+    let (uart_rx, uart_tx) = Uart::new(
+        peripherals.UART2,
+        UartConfig::default().with_baudrate(19200),
+    )
+    .expect("should be able to construct a Uart")
+    .with_rx(peripherals.GPIO12)
+    .with_tx(peripherals.GPIO13)
+    .into_async()
+    .split();
 
     #[cfg(feature = "esp32s3")]
-    let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
-        .expect("should be able to construct a Uart")
-        .with_rx(peripherals.GPIO1)
-        .with_tx(peripherals.GPIO2)
-        .into_async()
-        .split();
+    let (uart_rx, uart_tx) = Uart::new(
+        peripherals.UART2,
+        UartConfig::default().with_baudrate(19200),
+    )
+    .expect("should be able to construct a Uart")
+    .with_rx(peripherals.GPIO1)
+    .with_tx(peripherals.GPIO2)
+    .into_async()
+    .split();
+
+    let i2c = I2c::new(peripherals.I2C0, I2cConfig::default())
+        .expect("should be able to construct an I2c")
+        .with_scl(peripherals.GPIO21)
+        .with_sda(peripherals.GPIO19)
+        .into_async();
+
+    let bme = Bme280Device::new(i2c);
+
+    static BME_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Bme280Device<I2c<'_, Async>>>> =
+        StaticCell::new();
+    let bme_mutex = BME_MUTEX.init(Mutex::new(bme));
 
     // CREATE CONTEXT
 
@@ -87,6 +110,9 @@ async fn main(spawner: Spawner) -> ! {
                 SerialByteSource::new(uart_rx),
             );
             time_sync: TimeSyncComponent = ();
+            temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
+            pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
+            humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
         }
     }
 
