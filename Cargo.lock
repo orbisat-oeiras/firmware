@@ -1214,6 +1214,7 @@ name = "orbisat"
 version = "0.1.0"
 dependencies = [
  "defmt 1.0.1",
+ "embassy-futures",
  "embassy-sync 0.7.2",
  "embassy-time",
  "orbipacket",

@@ -66,6 +66,7 @@ async fn main(spawner: Spawner) -> ! {
     let ctx = CONTEXT.init(Context::new(
         InboundPacketChannel::new(),
         OutboundPacketChannel::new(),
+        Duration::from_millis(500),
         Delay,
     ));
 

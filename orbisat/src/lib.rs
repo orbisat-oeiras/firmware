@@ -5,7 +5,7 @@ use core::{error::Error, fmt::Display};
 use embassy_sync::pubsub::{
     WaitResult, publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture,
 };
-use embassy_time::{Delay, Instant};
+use embassy_time::{Delay, Duration, Instant, Ticker};
 use orbipacket::{DeviceId, Packet, Payload, TcPacket, Timestamp, TimestampError, TmPacket};
 use orbisat_firmware_config::packet_channel::{
     InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
@@ -49,6 +49,7 @@ impl From<embassy_sync::pubsub::Error> for ContextError {
 pub struct Context {
     inbound: InboundPacketChannel,
     outbound: OutboundPacketChannel,
+    tick_duration: Duration,
     delay: Delay,
 }
 
@@ -56,11 +57,13 @@ impl Context {
     pub fn new(
         inbound: InboundPacketChannel,
         outbound: OutboundPacketChannel,
+        tick_duration: Duration,
         delay: Delay,
     ) -> Self {
         Self {
             inbound,
             outbound,
+            tick_duration,
             delay,
         }
     }
@@ -69,6 +72,7 @@ impl Context {
         Ok(ContextHandle {
             inbound: self.inbound.subscriber()?,
             outbound: self.outbound.publisher()?,
+            tick: Ticker::every(self.tick_duration),
             delay: self.delay.clone(),
         })
     }
@@ -86,6 +90,7 @@ impl Context {
 pub struct ContextHandle<'a> {
     inbound: InboundPacketChannelSubscriber<'a>,
     outbound: OutboundPacketChannelPublisher<'a>,
+    tick: Ticker,
     delay: Delay,
 }
 
@@ -121,6 +126,10 @@ impl<'a> ContextHandle<'a> {
 
     pub fn delay_mut(&mut self) -> &mut Delay {
         &mut self.delay
+    }
+
+    pub fn next_tick(&mut self) -> impl Future<Output = ()> + Send + Sync + '_ {
+        self.tick.next()
     }
 }
 
