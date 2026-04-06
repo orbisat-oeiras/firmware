@@ -30,6 +30,12 @@ pub mod readings {
     #[derive(Debug)]
     pub struct Temperature(f32);
 
+    impl Temperature {
+        pub fn as_f32(&self) -> &f32 {
+            &self.0
+        }
+    }
+
     impl Display for Temperature {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{} ºC", self.0)
@@ -51,6 +57,12 @@ pub mod readings {
     #[derive(Debug)]
     pub struct Pressure(f32);
 
+    impl Pressure {
+        pub fn as_f32(&self) -> &f32 {
+            &self.0
+        }
+    }
+
     impl Display for Pressure {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             write!(f, "{} Pa", self.0)
@@ -71,6 +83,12 @@ pub mod readings {
 
     #[derive(Debug)]
     pub struct Humidity(f32);
+
+    impl Humidity {
+        pub fn as_f32(&self) -> &f32 {
+            &self.0
+        }
+    }
 
     impl Display for Humidity {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
