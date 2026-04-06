@@ -39,8 +39,14 @@ where
     async fn sink(&mut self, buf: &[u8]) {
         defmt::info!("Uart sending");
         // TODO: proper error handling
-        self.0.write_all(buf).await.unwrap();
-        self.0.flush().await.unwrap();
+        self.0
+            .write_all(buf)
+            .await
+            .expect("should be able to write to serial");
+        self.0
+            .flush()
+            .await
+            .expect("should be able to flush serial");
     }
 }
 
@@ -64,7 +70,10 @@ where
 {
     async fn fill(&mut self, buf: &mut [u8]) -> usize {
         // TODO: error handling
-        self.0.read(buf).await.unwrap()
+        self.0
+            .read(buf)
+            .await
+            .expect("should be able to read from serial")
     }
 }
 
@@ -128,6 +137,7 @@ impl Component for TimeSyncComponent {
 
         ctx.send_outbound(
             DeviceId::TimeSync,
+            // Unwrapping is safe because payload is 24 bytes long
             Payload::from_raw_bytes(payload).unwrap(),
         )
         .map_err(Into::<CommunicationError>::into)?

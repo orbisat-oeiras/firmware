@@ -15,10 +15,12 @@ macro_rules! components {
 
                 #[embassy_executor::task]
                 async fn [<$name _task>](mut c: $ty, mut ctx_handle: ContextHandle<'static>) {
-                    c.run(&mut ctx_handle).await.unwrap();
+                    c.run(&mut ctx_handle).await.expect(concat!("`run` future for ", stringify!($name), " should not error"));
                 }
 
-                $spawner.spawn([<$name _task>]($name, $ctx.to_handle().unwrap())).unwrap();
+                $spawner
+                    .spawn([<$name _task>]($name, $ctx.to_handle().expect("context should be convertible to a handle")))
+                    .expect(concat!("task for ", stringify!($name), " should be spawnable"));
             )*
         }
     };

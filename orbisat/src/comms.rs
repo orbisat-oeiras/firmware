@@ -104,6 +104,7 @@ where
             buf_index: 0,
             packet_buf: [Packet::TmPacket(TmPacket::new(
                 DeviceId::System,
+                // Unwrapping is safe because 0 is a valid timestamp
                 Timestamp::new(0).unwrap(),
                 Payload::new(),
             )); _],

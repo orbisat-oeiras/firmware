@@ -47,7 +47,7 @@ async fn main(spawner: Spawner) -> ! {
 
     #[cfg(feature = "esp32")]
     let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
-        .unwrap()
+        .expect("should be able to construct a Uart")
         .with_rx(peripherals.GPIO12)
         .with_tx(peripherals.GPIO13)
         .into_async()
@@ -55,7 +55,7 @@ async fn main(spawner: Spawner) -> ! {
 
     #[cfg(feature = "esp32s3")]
     let (uart_rx, uart_tx) = Uart::new(peripherals.UART2, Config::default().with_baudrate(19200))
-        .unwrap()
+        .expect("should be able to construct a Uart")
         .with_rx(peripherals.GPIO1)
         .with_tx(peripherals.GPIO2)
         .into_async()
@@ -73,12 +73,16 @@ async fn main(spawner: Spawner) -> ! {
 
     components! {
         (spawner, ctx) {
-            console_sink: PacketSink<ConsoleByteSink> = (ctx.outbound().subscriber().unwrap(), ConsoleByteSink);
+            console_sink: PacketSink<ConsoleByteSink> = (
+                ctx.outbound().subscriber().expect("outbound should be subscribable"),
+                ConsoleByteSink,
+            );
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
-                ctx.outbound().subscriber().unwrap(), SerialByteSink::new(uart_tx),
+                ctx.outbound().subscriber().expect("outbound should be subscribable"),
+                SerialByteSink::new(uart_tx),
             );
             serial_source: PacketSource<SerialByteSource<UartRx<'static, Async>>> = (
-                ctx.inbound().publisher().unwrap(),
+                ctx.inbound().publisher().expect("inbound should be publishable"),
                 SerialByteSource::new(uart_rx),
             );
             time_sync: TimeSyncComponent = ();
@@ -91,12 +95,14 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut tick = Ticker::every(Duration::from_millis(500));
     let mut counter = 0u32;
-    let ctx_handle = ctx.to_handle().unwrap();
+    let ctx_handle = ctx
+        .to_handle()
+        .expect("context should be convertible to a handle");
 
     loop {
         ctx_handle
             .send_outbound(DeviceId::System, Payload::from_u32(counter))
-            .unwrap()
+            .expect("should be able to send outbound")
             .await;
 
         counter += 1;

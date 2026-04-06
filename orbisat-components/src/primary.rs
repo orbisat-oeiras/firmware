@@ -77,6 +77,7 @@ where
             }
         }
 
+        // Unwrapping is safe because latest_temperature must be Some at this point
         Ok(self.latest_temperature.take().unwrap())
     }
 
@@ -92,6 +93,7 @@ where
             }
         }
 
+        // Unwrapping is safe because latest_pressure must be Some at this point
         Ok(self.latest_pressure.take().unwrap())
     }
 
@@ -107,6 +109,7 @@ where
             }
         }
 
+        // Unwrapping is safe because latest_humidity must be Some at this point
         Ok(self.latest_humidity.take().unwrap())
     }
 
