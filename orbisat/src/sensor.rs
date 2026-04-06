@@ -16,6 +16,7 @@ pub trait Sensor<T: Into<Payload>> {
         async move {
             let reading = self.read(ctx).await?;
             ctx.send_outbound(id, reading.into())?.await;
+            ctx.next_tick().await;
 
             Ok(())
         }
