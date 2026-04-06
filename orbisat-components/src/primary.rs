@@ -131,18 +131,18 @@ where
 }
 
 #[derive(Debug)]
-pub struct Bme280TemperatureSensor<I2C: i2c::I2c, M: RawMutex> {
-    inner: Mutex<M, Bme280Device<I2C>>,
+pub struct Bme280TemperatureSensor<'a, I2C: i2c::I2c, M: RawMutex> {
+    inner: &'a Mutex<M, Bme280Device<I2C>>,
 }
 
-impl<I2C: i2c::I2c, M: RawMutex> Bme280TemperatureSensor<I2C, M> {
-    pub fn new(inner: Mutex<M, Bme280Device<I2C>>) -> Self {
+impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280TemperatureSensor<'a, I2C, M> {
+    pub fn new(inner: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
         Self { inner }
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Temperature>
-    for Bme280TemperatureSensor<I2C, M>
+impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Temperature>
+    for Bme280TemperatureSensor<'a, I2C, M>
 {
     type Error = Bme280Error<I2C>;
 
@@ -155,7 +155,9 @@ impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Temperature>
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component for Bme280TemperatureSensor<I2C, M> {
+impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
+    for Bme280TemperatureSensor<'a, I2C, M>
+{
     type Error = Bme280Error<I2C>;
 
     fn id(&self) -> DeviceId {
@@ -171,18 +173,18 @@ impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component for Bme280Temperat
 }
 
 #[derive(Debug)]
-pub struct Bme280PressureSensor<I2C: i2c::I2c, M: RawMutex> {
-    inner: Mutex<M, Bme280Device<I2C>>,
+pub struct Bme280PressureSensor<'a, I2C: i2c::I2c, M: RawMutex> {
+    inner: &'a Mutex<M, Bme280Device<I2C>>,
 }
 
-impl<I2C: i2c::I2c, M: RawMutex> Bme280PressureSensor<I2C, M> {
-    pub fn new(inner: Mutex<M, Bme280Device<I2C>>) -> Self {
+impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280PressureSensor<'a, I2C, M> {
+    pub fn new(inner: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
         Self { inner }
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Pressure>
-    for Bme280PressureSensor<I2C, M>
+impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Pressure>
+    for Bme280PressureSensor<'a, I2C, M>
 {
     type Error = Bme280Error<I2C>;
 
@@ -195,7 +197,9 @@ impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Pressure>
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component for Bme280PressureSensor<I2C, M> {
+impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
+    for Bme280PressureSensor<'a, I2C, M>
+{
     type Error = Bme280Error<I2C>;
 
     fn id(&self) -> DeviceId {
@@ -211,18 +215,18 @@ impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component for Bme280Pressure
 }
 
 #[derive(Debug)]
-pub struct Bme280HumiditySensor<I2C: i2c::I2c, M: RawMutex> {
-    inner: Mutex<M, Bme280Device<I2C>>,
+pub struct Bme280HumiditySensor<'a, I2C: i2c::I2c, M: RawMutex> {
+    inner: &'a Mutex<M, Bme280Device<I2C>>,
 }
 
-impl<I2C: i2c::I2c, M: RawMutex> Bme280HumiditySensor<I2C, M> {
-    pub fn new(inner: Mutex<M, Bme280Device<I2C>>) -> Self {
+impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280HumiditySensor<'a, I2C, M> {
+    pub fn new(inner: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
         Self { inner }
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Humidity>
-    for Bme280HumiditySensor<I2C, M>
+impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Humidity>
+    for Bme280HumiditySensor<'a, I2C, M>
 {
     type Error = Bme280Error<I2C>;
 
@@ -235,11 +239,13 @@ impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Humidity>
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component for Bme280HumiditySensor<I2C, M> {
+impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
+    for Bme280HumiditySensor<'a, I2C, M>
+{
     type Error = Bme280Error<I2C>;
 
     fn id(&self) -> DeviceId {
-        DeviceId::PressureSensor
+        DeviceId::HumiditySensor
     }
 
     fn run_once(
