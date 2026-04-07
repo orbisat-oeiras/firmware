@@ -108,4 +108,44 @@ pub mod readings {
             Self(value)
         }
     }
+
+    #[derive(Debug)]
+    pub struct Acceleration(f32, f32, f32);
+
+    impl Acceleration {
+        pub fn new(x: f32, y: f32, z: f32) -> Self {
+            Self(x, y, z)
+        }
+
+        pub fn x(&self) -> f32 {
+            self.0
+        }
+
+        pub fn y(&self) -> f32 {
+            self.1
+        }
+
+        pub fn z(&self) -> f32 {
+            self.2
+        }
+    }
+
+    impl Display for Acceleration {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            write!(f, "({}, {}, {}) m/s^2", self.0, self.1, self.2)
+        }
+    }
+
+    impl From<Acceleration> for Payload {
+        fn from(value: Acceleration) -> Self {
+            const SIZE: usize = size_of::<f32>();
+            let mut buf = [0; 3 * SIZE];
+            buf[0..SIZE].copy_from_slice(&value.0.to_le_bytes());
+            buf[SIZE..2 * SIZE].copy_from_slice(&value.1.to_le_bytes());
+            buf[2 * SIZE..3 * SIZE].copy_from_slice(&value.2.to_le_bytes());
+
+            // Unwrapping is safe because buf is small enough
+            Payload::from_raw_bytes(buf).unwrap()
+        }
+    }
 }
