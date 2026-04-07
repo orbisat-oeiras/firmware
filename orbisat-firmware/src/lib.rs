@@ -5,13 +5,13 @@ macro_rules! components {
     (
         ($spawner:ident, $ctx:ident) {
             $(
-                $name:ident : $ty:ty = ( $($args:expr),* $(,)? );
+                $name:ident : $ty:ty = ( $($args:expr),* $(,)? )$(.expect($msg:expr))?;
             )*
         }
     ) => {
         paste::paste! {
             $(
-                let $name: $ty = <$ty>::new($($args),*);
+                let $name: $ty = <$ty>::new($($args),*)$(.expect($msg))?;
 
                 #[embassy_executor::task]
                 async fn [<$name _task>](mut c: $ty, mut ctx_handle: ContextHandle<'static>) {
