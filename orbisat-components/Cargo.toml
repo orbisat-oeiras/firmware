@@ -21,7 +21,7 @@ bme280 = { version = "0.5.1", features = [
     "defmt",
     "async",
 ], default-features = false }
-mma8x5x = { git = "https://github.com/eldruin/mma8x5x-rs", version = "0.1.1" }
+mma8x5x = { git = "https://github.com/orbisat-oeiras/mma8x5x-rs", version = "0.1.1" }
 nmea = { version = "0.7.0", features = ["GNSS"], default-features = false }
 embedded-io-async = "0.7.0"
 embassy-futures = "0.1.2"

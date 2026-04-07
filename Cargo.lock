@@ -1135,7 +1135,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 [[package]]
 name = "mma8x5x"
 version = "0.1.1"
-source = "git+https://github.com/eldruin/mma8x5x-rs#440b76fd53b85d56cc6fdd044e0ddb464cbef87e"
+source = "git+https://github.com/orbisat-oeiras/mma8x5x-rs#b70c568cbbefa73e8952e29ae3d493e17f65c604"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
