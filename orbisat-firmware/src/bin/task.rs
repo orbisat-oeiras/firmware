@@ -10,10 +10,10 @@ use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration};
-use esp_hal::Async;
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{Config as UartConfig, UartRx, UartTx};
+use esp_hal::{Async, Blocking};
 use esp_hal::{clock::CpuClock, uart::Uart};
 use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
@@ -21,6 +21,7 @@ use orbisat::{Context, ContextHandle};
 use orbisat_components::primary::{
     Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor,
 };
+use orbisat_components::spatial::Mma8542Component;
 use orbisat_components::{ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent};
 use orbisat_firmware::components;
 use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
@@ -47,7 +48,7 @@ async fn main(spawner: Spawner) {
 
     info!("Embassy initialized!");
 
-    // CONFIGURE PERIPHERALS
+    // GET PERIPHERALS
 
     #[cfg(feature = "esp32")]
     let (uart_rx, uart_tx) = Uart::new(
@@ -71,13 +72,25 @@ async fn main(spawner: Spawner) {
     .into_async()
     .split();
 
-    let i2c = I2c::new(peripherals.I2C0, I2cConfig::default())
+    let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
         .expect("should be able to construct an I2c")
         .with_scl(peripherals.GPIO21)
         .with_sda(peripherals.GPIO19)
         .into_async();
 
-    let bme = Bme280Device::new(i2c);
+    #[cfg(feature = "esp32")]
+    let i2c1 = I2c::new(peripherals.I2C1, I2cConfig::default())
+        .expect("should be able to construct an I2c")
+        .with_scl(peripherals.GPIO5)
+        .with_sda(peripherals.GPIO18);
+
+    #[cfg(feature = "esp32s3")]
+    let i2c1 = I2c::new(peripherals.I2C1, I2cConfig::default())
+        .expect("should be able to construct an I2c")
+        .with_scl(peripherals.GPIO8)
+        .with_sda(peripherals.GPIO9);
+
+    let bme = Bme280Device::new(i2c0);
 
     static BME_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Bme280Device<I2c<'_, Async>>>> =
         StaticCell::new();
@@ -112,6 +125,7 @@ async fn main(spawner: Spawner) {
             temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
+            accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
         }
     }
 
