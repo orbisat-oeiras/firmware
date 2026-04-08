@@ -1,6 +1,8 @@
 #![no_std]
+#![feature(with_negative_coherence)]
 
 pub mod primary;
+pub mod secondary;
 pub mod spatial;
 
 use embassy_time::Instant;
