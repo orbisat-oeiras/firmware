@@ -25,6 +25,8 @@ pub enum CommunicationError {
     Timestamp(#[from] TimestampError),
 }
 
+impl !embedded_hal::pwm::Error for CommunicationError {}
+
 pub trait ByteSink {
     fn sink(&mut self, buf: &[u8]) -> impl Future<Output = ()>;
 }

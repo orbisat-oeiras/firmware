@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(negative_impls)]
 
 use core::{error::Error, fmt::Display};
 
