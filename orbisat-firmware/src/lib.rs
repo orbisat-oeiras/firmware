@@ -1,5 +1,9 @@
 #![no_std]
 
+pub mod sweep {
+    include!(concat!(env!("OUT_DIR"), "/sweep.rs"));
+}
+
 #[macro_export]
 macro_rules! components {
     (

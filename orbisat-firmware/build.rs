@@ -1,4 +1,7 @@
+use std::{env, fs, path::Path};
+
 fn main() {
+    generate_sweep_const();
     linker_be_nice();
     println!("cargo:rustc-link-arg=-Tdefmt.x");
     // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
@@ -54,4 +57,25 @@ fn linker_be_nice() {
         "cargo:rustc-link-arg=-Wl,--error-handling-script={}",
         std::env::current_exe().unwrap().display()
     );
+}
+
+fn generate_sweep_const() {
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let dest_path = Path::new(&out_dir).join("sweep.rs");
+
+    let source = fs::read_to_string("sweep.csv").unwrap();
+    let sweep = source
+        .lines()
+        .map(|x| x.split(','))
+        .map(|mut x| (x.next().unwrap(), x.next().unwrap()))
+        .map(|(f, d)| format!("({f}, {d})"))
+        .collect::<Vec<_>>();
+    let count = sweep.len();
+    let sweep = sweep.join(",");
+
+    let generated_code = format!("pub const SWEEP: [(u32, u32); {count}] = [{sweep}];");
+
+    fs::write(&dest_path, generated_code).unwrap();
+
+    println!("cargo:rerun-if-changed=sweep.csv");
 }
