@@ -4,6 +4,8 @@ pub mod sweep {
     include!(concat!(env!("OUT_DIR"), "/sweep.rs"));
 }
 
+pub mod pwm;
+
 #[macro_export]
 macro_rules! components {
     (

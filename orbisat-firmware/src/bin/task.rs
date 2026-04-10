@@ -11,22 +11,10 @@ use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration};
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
-use esp_hal::ledc::timer::Timer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{Config as UartConfig, UartRx, UartTx};
 use esp_hal::{Async, Blocking};
 use esp_hal::{clock::CpuClock, uart::Uart};
-use esp_hal::{
-    ledc::{
-        LSGlobalClkSource, Ledc, LowSpeed,
-        channel::{Channel, ChannelIFace, Number as ChannelNumber},
-        timer::{
-            LSClockSource, Number as TimerNumber, TimerIFace,
-            config::{Config as LedcTimerConfig, Duty},
-        },
-    },
-    time::Rate,
-};
 use orbisat::comms::PacketSource;
 use orbisat::{Component, comms::PacketSink};
 use orbisat::{Context, ContextHandle};
@@ -37,6 +25,7 @@ use orbisat_components::secondary::SpeakerComponent;
 use orbisat_components::spatial::Mma8542Component;
 use orbisat_components::{ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent};
 use orbisat_firmware::components;
+use orbisat_firmware::pwm::PwmController;
 use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
@@ -107,32 +96,11 @@ async fn main(spawner: Spawner) {
         .with_sda(peripherals.GPIO9);
 
     // Pwm for audio output
-    let mut pwm = Ledc::new(peripherals.LEDC);
-    pwm.set_global_slow_clock(LSGlobalClkSource::APBClk);
-
-    static LSTIMER0: StaticCell<Timer<'static, LowSpeed>> = StaticCell::new();
-
-    let lstimer0 = LSTIMER0.init(pwm.timer::<LowSpeed>(TimerNumber::Timer0));
-    lstimer0
-        .configure(LedcTimerConfig {
-            duty: Duty::Duty5Bit,
-            clock_source: LSClockSource::APBClk,
-            frequency: Rate::from_hz(1000),
-        })
-        .expect("should be able to configure ledc timer");
 
     #[cfg(feature = "esp32")]
-    let mut channel0 = pwm.channel(ChannelNumber::Channel0, peripherals.GPIO33);
+    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO33);
     #[cfg(feature = "esp32s3")]
-    let mut channel0 = pwm.channel(ChannelNumber::Channel0, peripherals.GPIO34);
-
-    channel0
-        .configure(esp_hal::ledc::channel::config::Config {
-            timer: lstimer0,
-            duty_pct: 50,
-            drive_mode: esp_hal::gpio::DriveMode::PushPull,
-        })
-        .expect("should be able to configure ledc channel");
+    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO34);
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
@@ -171,7 +139,7 @@ async fn main(spawner: Spawner) {
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
-            speaker: SpeakerComponent<Channel<'static,LowSpeed>> = (channel0);
+            speaker: SpeakerComponent<PwmController> = (pwm);
         }
     }
 
