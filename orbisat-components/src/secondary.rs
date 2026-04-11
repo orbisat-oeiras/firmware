@@ -1,44 +1,31 @@
-use embedded_hal::pwm::{self, SetDutyCycle};
+use embassy_time::Duration;
 use orbipacket::DeviceId;
 use orbisat::{Component, comms::CommunicationError};
 
 #[derive(thiserror::Error)]
-pub enum SpeakerError<PWM, E>
-where
-    E: pwm::Error,
-    PWM: pwm::ErrorType<Error = E>,
-{
+pub enum SpeakerError {
     #[error(transparent)]
     Communication(#[from] CommunicationError),
-    #[error("pwm error: {0:?}")]
-    Pwm(PWM::Error),
 }
 
-impl<PWM, E> core::fmt::Debug for SpeakerError<PWM, E>
-where
-    E: pwm::Error,
-    PWM: pwm::ErrorType<Error = E>,
-{
+impl core::fmt::Debug for SpeakerError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             SpeakerError::Communication(f0) => f.debug_tuple("Communication").field(&f0).finish(),
-            SpeakerError::Pwm(f0) => f.debug_tuple("Pwm").field(&f0).finish(),
         }
-    }
-}
-
-impl<PWM, E> From<E> for SpeakerError<PWM, E>
-where
-    E: pwm::Error,
-    PWM: pwm::ErrorType<Error = E>,
-{
-    fn from(value: PWM::Error) -> Self {
-        Self::Pwm(value)
     }
 }
 
 pub trait SetFrequency {
     fn set_divider(&mut self, divider: u32);
+
+    fn play_frequency_for_duration(
+        &mut self,
+        frequency: f32,
+        duration: Duration,
+    ) -> impl Future<Output = ()>;
+
+    fn set_frequency_integer(&mut self, frequency: u32);
 
     fn set_frequency(&mut self, frequency: f32) {
         let (a, b) = self.calculate_ledc_timer_divider(80_000_000, frequency, 1);
@@ -83,37 +70,34 @@ pub trait SetFrequency {
     }
 }
 
+type SweepData<'a> = &'a [(f32, u64)];
+
 #[derive(Debug)]
-pub struct SpeakerComponent<PWM: SetDutyCycle + SetFrequency> {
+pub struct SpeakerComponent<'a, PWM: SetFrequency> {
     pwm: PWM,
+    data: SweepData<'a>,
 }
 
-impl<PWM: SetDutyCycle + SetFrequency> SpeakerComponent<PWM> {
-    pub fn new(pwm: PWM) -> Self {
-        Self { pwm }
+impl<'a, PWM: SetFrequency> SpeakerComponent<'a, PWM> {
+    pub fn new(pwm: PWM, data: SweepData<'a>) -> Self {
+        Self { pwm, data }
     }
 }
 
-impl<PWM: SetDutyCycle + SetFrequency> Component for SpeakerComponent<PWM> {
-    type Error = SpeakerError<PWM, PWM::Error>;
+impl<'a, PWM: SetFrequency> Component for SpeakerComponent<'a, PWM> {
+    type Error = SpeakerError;
 
     fn id(&self) -> orbipacket::DeviceId {
         DeviceId::Mission1
     }
 
-    async fn run(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
-        defmt::info!("Component {} started running", self.id());
-        self.pwm.set_frequency(1000.5);
-        self.pwm.set_duty_cycle(self.pwm.max_duty_cycle() / 2)?;
-
-        loop {
-            self.receive_tc(ctx).await?;
-            self.run_once(ctx).await?;
+    async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+        for (frequency, duration) in self.data {
+            self.pwm
+                .play_frequency_for_duration(*frequency, Duration::from_micros(*duration))
+                .await;
         }
-    }
 
-    async fn run_once(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
-        ctx.next_tick().await;
         Ok(())
     }
 }
