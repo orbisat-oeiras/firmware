@@ -20,8 +20,8 @@ macro_rules! components {
                 let $name: $ty = <$ty>::new($($args),*)$(.expect($msg))?;
 
                 #[embassy_executor::task]
-                async fn [<$name _task>](mut c: $ty, mut ctx_handle: ContextHandle<'static>) {
-                    c.run(&mut ctx_handle).await.expect(concat!("`run` future for ", stringify!($name), " should not error"));
+                async fn [<$name _task>](mut c: $ty, mut ctx_handle: orbisat::ContextHandle<'static>) {
+                    orbisat::Component::run(&mut c, &mut ctx_handle).await.expect(concat!("`run` future for ", stringify!($name), " should not error"));
                 }
 
                 $spawner

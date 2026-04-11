@@ -1,6 +1,8 @@
 use embassy_time::Timer;
 #[cfg(feature = "esp32")]
 use esp_hal::peripherals::GPIO33;
+#[cfg(feature = "esp32s3")]
+use esp_hal::peripherals::GPIO34;
 use esp_hal::{
     gpio::DriveMode,
     ledc::{
