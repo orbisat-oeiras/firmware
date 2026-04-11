@@ -11,6 +11,7 @@ use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration};
 use esp_hal::i2c::master::{Config as I2cConfig, I2c};
+use esp_hal::ledc::timer::config::Duty;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::uart::{Config as UartConfig, UartRx, UartTx};
 use esp_hal::{Async, Blocking};
@@ -24,8 +25,8 @@ use orbisat_components::primary::{
 use orbisat_components::secondary::SpeakerComponent;
 use orbisat_components::spatial::Mma8542Component;
 use orbisat_components::{ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent};
-use orbisat_firmware::components;
 use orbisat_firmware::pwm::PwmController;
+use orbisat_firmware::{components, sweep};
 use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
@@ -98,9 +99,9 @@ async fn main(spawner: Spawner) {
     // Pwm for audio output
 
     #[cfg(feature = "esp32")]
-    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO33);
+    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO33, Duty::Duty10Bit);
     #[cfg(feature = "esp32s3")]
-    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO34);
+    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO34, Duty::Duty10Bit);
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
@@ -139,7 +140,7 @@ async fn main(spawner: Spawner) {
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
-            speaker: SpeakerComponent<PwmController> = (pwm);
+            speaker: SpeakerComponent<'static, PwmController> = (pwm, &sweep::SWEEP[..]);
         }
     }
 
