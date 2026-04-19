@@ -30,7 +30,7 @@ paste = "1.0.15"
 
 [features]
 # Enable selection of ESP target
-default = ["esp32"]
+default = ["esp32s3"]
 esp32 = [
     "esp-hal/esp32",
     "esp-rtos/esp32",

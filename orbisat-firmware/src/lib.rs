@@ -21,7 +21,12 @@ macro_rules! components {
 
                 #[embassy_executor::task]
                 async fn [<$name _task>](mut c: $ty, mut ctx_handle: orbisat::ContextHandle<'static>) {
-                    orbisat::Component::run(&mut c, &mut ctx_handle).await.expect(concat!("`run` future for ", stringify!($name), " should not error"));
+                    match orbisat::Component::run(&mut c, &mut ctx_handle).await {
+                        Ok(_) => {},
+                        Err(e) => {
+                            defmt::error!("`run` future for {} failed", stringify!($name));
+                        }
+                    }
                 }
 
                 $spawner

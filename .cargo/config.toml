@@ -1,13 +1,16 @@
 [target.xtensa-esp32-none-elf]
 runner = "espflash flash --monitor --chip esp32 --log-format defmt"
 
+[target.xtensa-esp32s3-none-elf]
+runner = "espflash flash --monitor --chip esp32s3 --log-format defmt"
+
 [env]
 DEFMT_LOG = "info"
 
 [build]
 rustflags = ["-C", "link-arg=-nostartfiles"]
 
-target = "xtensa-esp32-none-elf"
+target = "xtensa-esp32s3-none-elf"
 
 [unstable]
 build-std = ["core"]

@@ -51,6 +51,10 @@ async fn main(spawner: Spawner) {
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0);
 
+    // let mut usb = UsbSerialJtag::new(peripherals.USB_DEVICE);
+    // let _ = writeln!(usb, "USB alive");
+    // embassy_time::Timer::after(Duration::from_millis(500)).await;
+
     info!("Embassy initialized!");
 
     // GET PERIPHERALS
@@ -78,12 +82,16 @@ async fn main(spawner: Spawner) {
     .into_async()
     .split();
 
+    info!("Initializing peripherals (1/4): UART");
+
     // I2c for the sensor
     let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
         .expect("should be able to construct an I2c")
         .with_scl(peripherals.GPIO21)
-        .with_sda(peripherals.GPIO19)
+        .with_sda(peripherals.GPIO18)
         .into_async();
+
+    info!("Initializing peripherals (2/4): I2C0");
 
     // I2c for the accelerometer
     #[cfg(feature = "esp32")]
@@ -98,12 +106,16 @@ async fn main(spawner: Spawner) {
         .with_scl(peripherals.GPIO8)
         .with_sda(peripherals.GPIO9);
 
+    info!("Initializing peripherals (3/4): I2C1");
+
     // Pwm for audio output
 
     #[cfg(feature = "esp32")]
     let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO33, Duty::Duty10Bit);
     #[cfg(feature = "esp32s3")]
     let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO34, Duty::Duty10Bit);
+
+    info!("Initializing peripherals (4/4): LEDC");
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
