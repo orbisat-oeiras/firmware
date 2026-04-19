@@ -1,4 +1,4 @@
-use embassy_time::Timer;
+use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 #[cfg(feature = "esp32")]
 use esp_hal::peripherals::GPIO33;
 #[cfg(feature = "esp32s3")]
@@ -9,7 +9,7 @@ use esp_hal::{
         LSGlobalClkSource, Ledc, LowSpeed,
         channel::{ChannelIFace, Number as ChannelNumber, config::Config as ChannelConfig},
         timer::{
-            LSClockSource, Number as TimerNumber, Timer as LedcTimer, TimerHW, TimerIFace,
+            LSClockSource, Number as TimerNumber, Timer as LedcTimer, TimerIFace,
             config::{Config as TimerConfig, Duty},
         },
     },
@@ -26,7 +26,7 @@ type PwmPin = GPIO34<'static>;
 
 pub struct PwmController {
     ledc: &'static mut Ledc<'static>,
-    lstimer0: &'static LedcTimer<'static, LowSpeed>,
+    lstimer0: Mutex<CriticalSectionRawMutex, &'static mut LedcTimer<'static, LowSpeed>>,
     pin: PwmPin,
     duty: Duty,
 }
@@ -42,13 +42,13 @@ impl PwmController {
         let lstimer0 = LSTIMER0.init(ledc.timer::<LowSpeed>(TimerNumber::Timer0));
         lstimer0
             .configure(TimerConfig {
-                duty: Duty::Duty1Bit,
+                duty,
                 clock_source: LSClockSource::APBClk,
                 frequency: Rate::from_hz(1000),
             })
             .expect("should be able to configure ledc timer");
 
-        let lstimer0 = &(*lstimer0);
+        let lstimer0 = Mutex::new(lstimer0);
 
         Self {
             ledc,
@@ -60,40 +60,28 @@ impl PwmController {
 }
 
 impl SetFrequency for PwmController {
-    fn set_divider(&mut self, divider: u32) {
-        self.lstimer0.configure_hw(divider);
-    }
+    async fn set_frequency(&mut self, frequency: u32) {
+        unsafe {
+            self.lstimer0.lock_mut(|lstimer0| {
+                lstimer0
+                    .configure(TimerConfig {
+                        clock_source: LSClockSource::APBClk,
+                        duty: self.duty,
+                        frequency: Rate::from_hz(frequency),
+                    })
+                    .expect("should be able to configure ledc timer");
 
-    fn set_frequency_integer(&mut self, frequency: u32) {
-        // from <Timer as TimerIFace>::configure()
-        let src_freq: u32 = self
-            .lstimer0
-            .freq()
-            .expect("lstimer0 source frequency should be set")
-            .as_hz();
-        let precision = 1 << self.duty as u32;
-        let divider = ((src_freq as u64) << 8) / frequency as u64 / precision as u64;
-        self.set_divider(divider as u32);
-    }
-
-    async fn play_frequency_for_duration(
-        &mut self,
-        frequency: f32,
-        duration: embassy_time::Duration,
-    ) {
-        self.set_frequency_integer(frequency as u32);
-
-        let mut channel0 = self
-            .ledc
-            .channel(ChannelNumber::Channel0, self.pin.reborrow());
-        channel0
-            .configure(ChannelConfig {
-                timer: self.lstimer0,
-                drive_mode: DriveMode::PushPull,
-                duty_pct: 50,
-            })
-            .expect("should be able to configure ledc channel");
-
-        Timer::after(duration).await;
+                let mut channel0 = self
+                    .ledc
+                    .channel(ChannelNumber::Channel0, self.pin.reborrow());
+                channel0
+                    .configure(ChannelConfig {
+                        timer: *lstimer0,
+                        drive_mode: DriveMode::PushPull,
+                        duty_pct: 50,
+                    })
+                    .expect("should be able to configure ledc channel");
+            });
+        }
     }
 }

@@ -73,7 +73,7 @@ fn generate_sweep_const() {
     let count = sweep.len();
     let sweep = sweep.join(",");
 
-    let generated_code = format!("pub const SWEEP: [(f32, u64); {count}] = [{sweep}];");
+    let generated_code = format!("pub const SWEEP: [(u32, u64); {count}] = [{sweep}];");
 
     fs::write(&dest_path, generated_code).unwrap();
 
