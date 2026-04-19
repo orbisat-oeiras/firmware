@@ -26,11 +26,16 @@ type SweepData<'a> = &'a [(u32, u64)];
 pub struct SpeakerComponent<'a, PWM: SetFrequency> {
     pwm: PWM,
     data: SweepData<'a>,
+    forward_sweep: bool,
 }
 
 impl<'a, PWM: SetFrequency> SpeakerComponent<'a, PWM> {
     pub fn new(pwm: PWM, data: SweepData<'a>) -> Self {
-        Self { pwm, data }
+        Self {
+            pwm,
+            data,
+            forward_sweep: true,
+        }
     }
 }
 
@@ -42,9 +47,21 @@ impl<'a, PWM: SetFrequency> Component for SpeakerComponent<'a, PWM> {
     }
 
     async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
-        for (frequency, duration) in self.data {
-            self.pwm.set_frequency(*frequency).await;
-            Timer::after(Duration::from_micros(*duration)).await;
+        if self.forward_sweep {
+            defmt::info!("Starting forward sweep");
+            for (frequency, duration) in self.data {
+                self.pwm.set_frequency(*frequency).await;
+                Timer::after(Duration::from_micros(*duration)).await;
+            }
+            self.forward_sweep = false;
+        } else {
+            defmt::info!("Starting reverse sweep");
+            for (frequency, duration) in self.data.iter().rev() {
+                self.pwm.set_frequency(*frequency).await;
+                Timer::after(Duration::from_micros(*duration)).await;
+            }
+
+            self.forward_sweep = true;
         }
 
         Ok(())
