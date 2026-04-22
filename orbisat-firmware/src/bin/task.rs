@@ -99,7 +99,7 @@ async fn main(spawner: Spawner) {
     let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
         .expect("should be able to construct an I2c")
         .with_scl(peripherals.GPIO21)
-        .with_sda(peripherals.GPIO18)
+        .with_sda(peripherals.GPIO42)
         .into_async();
 
     info!("Initialised peripherals (2/5): I2C0");
