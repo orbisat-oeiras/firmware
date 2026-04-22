@@ -2,6 +2,7 @@
 #![feature(with_negative_coherence)]
 
 pub mod primary;
+pub mod sd;
 pub mod secondary;
 pub mod spatial;
 

@@ -10,13 +10,23 @@ use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration};
+use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::{
     Async, Blocking,
     clock::CpuClock,
+    gpio::{Level, Output, OutputConfig},
     i2c::master::{Config as I2cConfig, I2c},
     ledc::timer::config::Duty,
     timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart, UartRx, UartTx},
+};
+#[cfg(feature = "esp32s3")]
+use esp_hal::{
+    spi::{
+        Mode as SpiMode,
+        master::{Config as SpiConfig, Spi},
+    },
+    time::Rate,
 };
 use orbisat::{
     Context,
@@ -25,6 +35,7 @@ use orbisat::{
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
+    sd::SdCardManager,
     secondary::SpeakerComponent,
     spatial::Mma8542Component,
 };
@@ -82,7 +93,7 @@ async fn main(spawner: Spawner) {
     .into_async()
     .split();
 
-    info!("Initializing peripherals (1/4): UART");
+    info!("Initialised peripherals (1/5): UART");
 
     // I2c for the sensor
     let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
@@ -91,7 +102,7 @@ async fn main(spawner: Spawner) {
         .with_sda(peripherals.GPIO18)
         .into_async();
 
-    info!("Initializing peripherals (2/4): I2C0");
+    info!("Initialised peripherals (2/5): I2C0");
 
     // I2c for the accelerometer
     #[cfg(feature = "esp32")]
@@ -106,7 +117,7 @@ async fn main(spawner: Spawner) {
         .with_scl(peripherals.GPIO8)
         .with_sda(peripherals.GPIO9);
 
-    info!("Initializing peripherals (3/4): I2C1");
+    info!("Initialised peripherals (3/5): I2C1");
 
     // Pwm for audio output
 
@@ -115,7 +126,30 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32s3")]
     let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO34, Duty::Duty10Bit);
 
-    info!("Initializing peripherals (4/4): LEDC");
+    info!("Initialised peripherals (4/5): LEDC");
+
+    // Spi for SD card
+
+    #[cfg(feature = "esp32s3")]
+    let spi_bus = Spi::new(
+        peripherals.SPI2,
+        SpiConfig::default()
+            .with_frequency(Rate::from_khz(400))
+            .with_mode(SpiMode::_0),
+    )
+    .unwrap()
+    .with_sck(peripherals.GPIO12)
+    .with_miso(peripherals.GPIO13)
+    .with_mosi(peripherals.GPIO11)
+    .into_async();
+
+    let spi_cs = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
+    let spi_dev = ExclusiveDevice::new(spi_bus, spi_cs, Delay)
+        .expect("should be able to create an ExclusiveDevice");
+
+    info!("Initialised peripherals (5/5): SPI");
+
+    let _sd_manager = SdCardManager::new(spi_dev);
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
