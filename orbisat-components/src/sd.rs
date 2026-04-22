@@ -39,7 +39,6 @@ impl<SPI: SpiDevice<u8>> From<embedded_sdmmc::Error<<SdCard<SPI, Delay> as Block
 }
 
 pub struct SdCardManager<SPI: SpiDevice<u8>> {
-    bootcount: u8,
     boot_dir_name: String<4>,
     volume_manager: VolumeManager<SdCard<SPI, Delay>, SdTimeSource>,
 }
@@ -52,7 +51,7 @@ impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
 
         let volume_manager = VolumeManager::new(sd_card, SdTimeSource);
 
-        let (bootcount, boot_dir_name) = {
+        let boot_dir_name = {
             let volume0 = volume_manager.open_volume(VolumeIdx(0))?;
             let root_dir = volume0.open_root_dir()?;
 
@@ -88,11 +87,10 @@ impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
                 Err(e) => return Err(e.into()),
             }
 
-            (bootcount, boot_dir_name)
+            boot_dir_name
         };
 
         Ok(Self {
-            bootcount,
             boot_dir_name,
             volume_manager,
         })
