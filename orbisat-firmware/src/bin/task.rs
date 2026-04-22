@@ -88,8 +88,8 @@ async fn main(spawner: Spawner) {
         UartConfig::default().with_baudrate(19200),
     )
     .expect("should be able to construct a Uart")
-    .with_rx(peripherals.GPIO1)
-    .with_tx(peripherals.GPIO2)
+    .with_rx(peripherals.GPIO2)
+    .with_tx(peripherals.GPIO1)
     .into_async()
     .split();
 
