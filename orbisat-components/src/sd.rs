@@ -1,7 +1,8 @@
 use embassy_time::{Delay, Instant};
 use embedded_hal::spi::SpiDevice;
 use embedded_sdmmc::{BlockDevice, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
-use heapless::format;
+use heapless::{String, format};
+use orbisat::comms::ByteSink;
 
 #[derive(Debug)]
 struct SdTimeSource;
@@ -39,6 +40,7 @@ impl<SPI: SpiDevice<u8>> From<embedded_sdmmc::Error<<SdCard<SPI, Delay> as Block
 
 pub struct SdCardManager<SPI: SpiDevice<u8>> {
     bootcount: u8,
+    boot_dir_name: String<4>,
     volume_manager: VolumeManager<SdCard<SPI, Delay>, SdTimeSource>,
 }
 
@@ -49,7 +51,8 @@ impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
         defmt::info!("SD card size is {} bytes", sd_card.num_bytes());
 
         let volume_manager = VolumeManager::new(sd_card, SdTimeSource);
-        let bootcount = {
+
+        let (bootcount, boot_dir_name) = {
             let volume0 = volume_manager.open_volume(VolumeIdx(0))?;
             let root_dir = volume0.open_root_dir()?;
 
@@ -85,12 +88,37 @@ impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
                 Err(e) => return Err(e.into()),
             }
 
-            bootcount
+            (bootcount, boot_dir_name)
         };
 
         Ok(Self {
             bootcount,
+            boot_dir_name,
             volume_manager,
         })
+    }
+}
+
+pub struct SdByteSink<'a, SPI: SpiDevice<u8>>(&'a SdCardManager<SPI>);
+
+impl<'a, SPI: SpiDevice<u8>> SdByteSink<'a, SPI> {
+    pub fn new(sd_card_manager: &'a SdCardManager<SPI>) -> Self {
+        Self(sd_card_manager)
+    }
+}
+
+impl<'a, SPI: SpiDevice<u8>> ByteSink for SdByteSink<'a, SPI> {
+    type Error = SdError<SPI>;
+
+    async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
+        self.0
+            .volume_manager
+            .open_volume(VolumeIdx(0))?
+            .open_root_dir()?
+            .open_dir(self.0.boot_dir_name.as_str())?
+            .open_file_in_dir("DATA", Mode::ReadWriteCreateOrAppend)?
+            .write(buf)?;
+
+        Ok(())
     }
 }

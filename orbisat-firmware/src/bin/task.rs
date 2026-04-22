@@ -35,7 +35,7 @@ use orbisat::{
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
-    sd::SdCardManager,
+    sd::{SdByteSink, SdCardManager},
     secondary::SpeakerComponent,
     spatial::Mma8542Component,
 };
@@ -149,15 +149,17 @@ async fn main(spawner: Spawner) {
 
     info!("Initialised peripherals (5/5): SPI");
 
-    match SdCardManager::new(spi_dev) {
-        Ok(_) => {}
+    static SD_CARD_MANAGER: StaticCell<
+        SdCardManager<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>,
+    > = StaticCell::new();
+
+    let sd_card_manager = SD_CARD_MANAGER.init(match SdCardManager::new(spi_dev) {
+        Ok(m) => m,
         Err(e) => match e {
-            orbisat_components::sd::SdError::Sd(error) => defmt::error!("{}", error),
-            orbisat_components::sd::SdError::BootcountUnreadable => {
-                defmt::error!("bootcount unreadable")
-            }
+            orbisat_components::sd::SdError::Sd(error) => panic!("sd error: {:?}", error),
+            orbisat_components::sd::SdError::BootcountUnreadable => panic!("bootcount unreadable"),
         },
-    }
+    });
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
@@ -183,6 +185,9 @@ async fn main(spawner: Spawner) {
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 ConsoleByteSink,
             );
+            sd_sink: PacketSink<SdByteSink<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
+                ctx.outbound().subscriber().expect("outbound should be subscribable"),
+                SdByteSink::new(sd_card_manager));
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SerialByteSink::new(uart_tx),
