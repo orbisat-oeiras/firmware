@@ -43,9 +43,9 @@ where
     I2C: i2c::I2c,
 {
     driver: AsyncBME280<I2C>,
-    temperature: Deque<Temperature, 16>,
-    pressure: Deque<Pressure, 16>,
-    humidity: Deque<Humidity, 16>,
+    temperature: Deque<Temperature, 256>,
+    pressure: Deque<Pressure, 256>,
+    humidity: Deque<Humidity, 256>,
     initialized: bool,
 }
 
