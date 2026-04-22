@@ -28,7 +28,9 @@ pub enum CommunicationError {
 impl !embedded_hal::pwm::Error for CommunicationError {}
 
 pub trait ByteSink {
-    fn sink(&mut self, buf: &[u8]) -> impl Future<Output = ()>;
+    type Error;
+
+    fn sink(&mut self, buf: &[u8]) -> impl Future<Output = Result<(), Self::Error>>;
 }
 
 #[derive(Debug)]
@@ -72,7 +74,10 @@ where
             WaitResult::Message(p) => p,
         };
         let packet = packet.encode(&mut self.buf)?;
-        self.sink.sink(packet).await;
+        match self.sink.sink(packet).await {
+            Ok(_) => {}
+            Err(_) => defmt::error!("Byte sink error"),
+        }
 
         Ok(())
     }

@@ -6,6 +6,8 @@ pub mod sd;
 pub mod secondary;
 pub mod spatial;
 
+use core::convert::Infallible;
+
 use embassy_time::Instant;
 use orbipacket::{DeviceId, Payload};
 use orbisat::{
@@ -17,8 +19,11 @@ use orbisat::{
 pub struct ConsoleByteSink;
 
 impl ByteSink for ConsoleByteSink {
-    async fn sink(&mut self, buf: &[u8]) {
+    type Error = Infallible;
+
+    async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         defmt::info!("Outbound packet: {:02X}", buf);
+        Ok(())
     }
 }
 
@@ -40,17 +45,14 @@ impl<W> ByteSink for SerialByteSink<W>
 where
     W: embedded_io_async::Write,
 {
-    async fn sink(&mut self, buf: &[u8]) {
+    type Error = W::Error;
+
+    async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         defmt::info!("Uart sending");
         // TODO: proper error handling
-        self.0
-            .write_all(buf)
-            .await
-            .expect("should be able to write to serial");
-        self.0
-            .flush()
-            .await
-            .expect("should be able to flush serial");
+        self.0.write_all(buf).await?;
+        self.0.flush().await?;
+        Ok(())
     }
 }
 
