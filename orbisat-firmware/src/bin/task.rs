@@ -149,7 +149,15 @@ async fn main(spawner: Spawner) {
 
     info!("Initialised peripherals (5/5): SPI");
 
-    let _sd_manager = SdCardManager::new(spi_dev);
+    match SdCardManager::new(spi_dev) {
+        Ok(_) => {}
+        Err(e) => match e {
+            orbisat_components::sd::SdError::Sd(error) => defmt::error!("{}", error),
+            orbisat_components::sd::SdError::BootcountUnreadable => {
+                defmt::error!("bootcount unreadable")
+            }
+        },
+    }
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
