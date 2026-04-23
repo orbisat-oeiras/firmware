@@ -66,7 +66,7 @@ where
         DeviceId::System
     }
 
-    async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run_once(&mut self, ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
         let packet = match self.recv.next_message().await {
             WaitResult::Lagged(n) => {
                 return Err(CommunicationError::OutboundPacketLagged(n));
@@ -74,7 +74,13 @@ where
             WaitResult::Message(p) => p,
         };
         let packet = packet.encode(&mut self.buf)?;
-        match self.sink.sink(packet).await {
+
+        let result = {
+            let _ = ctx.lock().await;
+            self.sink.sink(packet).await
+        };
+
+        match result {
             Ok(_) => {}
             Err(_) => defmt::error!("Byte sink error"),
         }

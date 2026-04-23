@@ -73,54 +73,57 @@ where
         Ok(())
     }
 
-    pub async fn get_temperature_measurement<D: DelayNs>(
+    pub async fn get_temperature_measurement(
         &mut self,
-        delay: &mut D,
+        ctx: &mut ContextHandle<'_>,
     ) -> Result<Temperature, Bme280Error<I2C>> {
         match self.temperature.pop_front() {
             Some(m) => Ok(m),
             None => {
-                self.measure(delay).await?;
+                self.measure(ctx).await?;
                 // SAFETY: measure fills the deque
                 Ok(unsafe { self.temperature.pop_front_unchecked() })
             }
         }
     }
 
-    pub async fn get_pressure_measurement<D: DelayNs>(
+    pub async fn get_pressure_measurement(
         &mut self,
-        delay: &mut D,
+        ctx: &mut ContextHandle<'_>,
     ) -> Result<Pressure, Bme280Error<I2C>> {
         match self.pressure.pop_front() {
             Some(m) => Ok(m),
             None => {
-                self.measure(delay).await?;
+                self.measure(ctx).await?;
                 // SAFETY: measure fills the deque
                 Ok(unsafe { self.pressure.pop_front_unchecked() })
             }
         }
     }
 
-    pub async fn get_humidity_measurement<D: DelayNs>(
+    pub async fn get_humidity_measurement(
         &mut self,
-        delay: &mut D,
+        ctx: &mut ContextHandle<'_>,
     ) -> Result<Humidity, Bme280Error<I2C>> {
         match self.humidity.pop_front() {
             Some(m) => Ok(m),
             None => {
-                self.measure(delay).await?;
+                self.measure(ctx).await?;
                 // SAFETY: measure fills the deque
                 Ok(unsafe { self.humidity.pop_front_unchecked() })
             }
         }
     }
 
-    async fn measure<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), Bme280Error<I2C>> {
-        if !self.initialized {
-            self.init(delay).await?;
-        }
+    async fn measure(&mut self, ctx: &mut ContextHandle<'_>) -> Result<(), Bme280Error<I2C>> {
+        let measurement = {
+            let _ = ctx.lock().await;
+            if !self.initialized {
+                self.init(ctx.delay_mut()).await?;
+            }
 
-        let measurement = self.driver.measure(delay).await?;
+            self.driver.measure(ctx.delay_mut()).await?
+        };
 
         self.temperature
             .push_back(measurement.temperature.into())
@@ -155,7 +158,7 @@ impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: blocking_mutex::raw::RawMutex> Sen
         self.device
             .lock()
             .await
-            .get_temperature_measurement(ctx.delay_mut())
+            .get_temperature_measurement(ctx)
             .await
     }
 }
@@ -194,11 +197,7 @@ impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Pressure>
     type Error = Bme280Error<I2C>;
 
     async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Pressure, Self::Error> {
-        self.device
-            .lock()
-            .await
-            .get_pressure_measurement(ctx.delay_mut())
-            .await
+        self.device.lock().await.get_pressure_measurement(ctx).await
     }
 }
 
@@ -236,11 +235,7 @@ impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Humidity>
     type Error = Bme280Error<I2C>;
 
     async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Humidity, Self::Error> {
-        self.device
-            .lock()
-            .await
-            .get_humidity_measurement(ctx.delay_mut())
-            .await
+        self.device.lock().await.get_humidity_measurement(ctx).await
     }
 }
 

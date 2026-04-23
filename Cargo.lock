@@ -1284,6 +1284,7 @@ dependencies = [
  "embassy-time",
  "embedded-hal 1.0.0",
  "embedded-hal-bus",
+ "embedded-sdmmc",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
@@ -1295,6 +1296,7 @@ dependencies = [
  "orbisat-firmware-config",
  "paste",
  "static_cell",
+ "thiserror",
 ]
 
 [[package]]

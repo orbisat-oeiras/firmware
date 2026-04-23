@@ -1,11 +1,15 @@
+use core::fmt::Debug;
+
 use embassy_time::{Delay, Instant};
 use embedded_hal::spi::SpiDevice;
-use embedded_sdmmc::{BlockDevice, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
+use embedded_sdmmc::{
+    BlockDevice, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
+};
 use heapless::{String, format};
-use orbisat::comms::ByteSink;
+use orbisat::{ContextHandle, comms::ByteSink};
 
 #[derive(Debug)]
-struct SdTimeSource;
+pub struct SdTimeSource;
 
 impl TimeSource for SdTimeSource {
     fn get_timestamp(&self) -> embedded_sdmmc::Timestamp {
@@ -22,12 +26,21 @@ impl TimeSource for SdTimeSource {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error)]
 pub enum SdError<SPI: SpiDevice<u8>> {
     #[error("sd error: {0:?}")]
     Sd(embedded_sdmmc::Error<<SdCard<SPI, Delay> as BlockDevice>::Error>),
     #[error("bootcount file cannot be read")]
     BootcountUnreadable,
+}
+
+impl<SPI: SpiDevice<u8>> Debug for SdError<SPI> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Sd(arg0) => f.debug_tuple("Sd").field(arg0).finish(),
+            Self::BootcountUnreadable => write!(f, "BootcountUnreadable"),
+        }
+    }
 }
 
 impl<SPI: SpiDevice<u8>> From<embedded_sdmmc::Error<<SdCard<SPI, Delay> as BlockDevice>::Error>>
@@ -95,13 +108,23 @@ impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
             volume_manager,
         })
     }
+
+    pub fn volume_manager(&self) -> &VolumeManager<SdCard<SPI, Delay>, SdTimeSource> {
+        &self.volume_manager
+    }
+
+    pub fn boot_dir_name(&self) -> &str {
+        &self.boot_dir_name
+    }
 }
 
-pub struct SdByteSink<'a, SPI: SpiDevice<u8>>(&'a SdCardManager<SPI>);
+pub struct SdByteSink<'a, SPI: SpiDevice<u8>>(
+    &'a mut File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+);
 
 impl<'a, SPI: SpiDevice<u8>> SdByteSink<'a, SPI> {
-    pub fn new(sd_card_manager: &'a SdCardManager<SPI>) -> Self {
-        Self(sd_card_manager)
+    pub fn new(file: &'a mut File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>) -> Self {
+        Self(file)
     }
 }
 
@@ -109,13 +132,26 @@ impl<'a, SPI: SpiDevice<u8>> ByteSink for SdByteSink<'a, SPI> {
     type Error = SdError<SPI>;
 
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        self.0
-            .volume_manager
-            .open_volume(VolumeIdx(0))?
-            .open_root_dir()?
-            .open_dir(self.0.boot_dir_name.as_str())?
-            .open_file_in_dir("DATA", Mode::ReadWriteCreateOrAppend)?
-            .write(buf)?;
+        self.0.write(buf)?;
+
+        Ok(())
+    }
+}
+
+pub struct SdFileWriter<'a, SPI: SpiDevice<u8>> {
+    // card: &'a SdCardManager<SPI>,
+    file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+}
+
+impl<'a, SPI: SpiDevice<u8>> SdFileWriter<'a, SPI> {
+    pub fn new(file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>) -> Self {
+        Self { file }
+    }
+
+    pub async fn write(&mut self, buf: &[u8], ctx: &ContextHandle<'_>) -> Result<(), SdError<SPI>> {
+        let _ = ctx.lock().await;
+        self.file.write(buf)?;
+        self.file.flush()?;
 
         Ok(())
     }

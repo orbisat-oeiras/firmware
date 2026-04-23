@@ -8,14 +8,18 @@
 
 use defmt::info;
 use embassy_executor::Spawner;
+use embassy_sync::channel::Channel;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration};
 use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_sdmmc::{Directory, File, Mode, SdCard, Volume, VolumeIdx};
 use esp_hal::{
     Async, Blocking,
     clock::CpuClock,
+    dma_buffers,
     gpio::{Level, Output, OutputConfig},
     i2c::master::{Config as I2cConfig, I2c},
+    i2s::master::{Channels, Config as I2sConfig, DataFormat, I2s, I2sRx},
     ledc::timer::config::Duty,
     timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart, UartRx, UartTx},
@@ -32,15 +36,19 @@ use orbisat::{
     Context,
     comms::{PacketSink, PacketSource},
 };
+use orbisat_components::sd::SdTimeSource;
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
-    sd::{SdByteSink, SdCardManager},
+    sd::{SdByteSink, SdCardManager, SdFileWriter},
     secondary::SpeakerComponent,
-    spatial::Mma8542Component,
+    spatial::{GnssComponent, Mma8542Component},
 };
+use orbisat_firmware::i2s::AudioRecorderComponent;
 use orbisat_firmware::{components, pwm::PwmController, sweep};
-use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
+use orbisat_firmware_config::packet_channel::{
+    AsyncMutex, InboundPacketChannel, OutboundPacketChannel,
+};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 
@@ -72,7 +80,7 @@ async fn main(spawner: Spawner) {
 
     // Uart for radio comms
     #[cfg(feature = "esp32")]
-    let (uart_rx, uart_tx) = Uart::new(
+    let (uart0_rx, uart0_tx) = Uart::new(
         peripherals.UART2,
         UartConfig::default().with_baudrate(19200),
     )
@@ -83,7 +91,7 @@ async fn main(spawner: Spawner) {
     .split();
 
     #[cfg(feature = "esp32s3")]
-    let (uart_rx, uart_tx) = Uart::new(
+    let (uart0_rx, uart0_tx) = Uart::new(
         peripherals.UART2,
         UartConfig::default().with_baudrate(19200),
     )
@@ -93,7 +101,19 @@ async fn main(spawner: Spawner) {
     .into_async()
     .split();
 
-    info!("Initialised peripherals (1/5): UART");
+    info!("Initialised peripherals (1/6): UART0");
+
+    let (uart1_rx, _) = Uart::new(
+        peripherals.UART1,
+        UartConfig::default().with_baudrate(19200),
+    )
+    .expect("should be able to construct a Uart")
+    .with_rx(peripherals.GPIO3)
+    .with_tx(peripherals.GPIO5)
+    .into_async()
+    .split();
+
+    info!("Initialised peripherals (2/6): UART1");
 
     // I2c for the sensor
     let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
@@ -102,7 +122,7 @@ async fn main(spawner: Spawner) {
         .with_sda(peripherals.GPIO42)
         .into_async();
 
-    info!("Initialised peripherals (2/5): I2C0");
+    info!("Initialised peripherals (3/6): I2C0");
 
     // I2c for the accelerometer
     #[cfg(feature = "esp32")]
@@ -117,7 +137,7 @@ async fn main(spawner: Spawner) {
         .with_scl(peripherals.GPIO8)
         .with_sda(peripherals.GPIO9);
 
-    info!("Initialised peripherals (3/5): I2C1");
+    info!("Initialised peripherals (4/6): I2C1");
 
     // Pwm for audio output
 
@@ -126,7 +146,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32s3")]
     let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO34, Duty::Duty10Bit);
 
-    info!("Initialised peripherals (4/5): LEDC");
+    info!("Initialised peripherals (5/6): LEDC");
 
     // Spi for SD card
 
@@ -147,7 +167,7 @@ async fn main(spawner: Spawner) {
     let spi_dev = ExclusiveDevice::new(spi_bus, spi_cs, Delay)
         .expect("should be able to create an ExclusiveDevice");
 
-    info!("Initialised peripherals (5/5): SPI");
+    info!("Initialised peripherals (6/6): SPI");
 
     static SD_CARD_MANAGER: StaticCell<
         SdCardManager<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>,
@@ -160,6 +180,113 @@ async fn main(spawner: Spawner) {
             orbisat_components::sd::SdError::BootcountUnreadable => panic!("bootcount unreadable"),
         },
     });
+
+    // I2S setup for audio recording
+    let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(64 * 1024, 0);
+
+    let i2s = I2s::new(
+        peripherals.I2S0,
+        peripherals.DMA_CH0,
+        I2sConfig::new_tdm_philips()
+            .with_sample_rate(Rate::from_hz(6000))
+            .with_data_format(DataFormat::Data16Channel16)
+            .with_channels(Channels::STEREO),
+    )
+    .unwrap();
+    let i2s = i2s.with_mclk(peripherals.GPIO39);
+
+    static I2S_RX: StaticCell<I2sRx<'_, Blocking>> = StaticCell::new();
+
+    let i2s_rx = I2S_RX.init(
+        i2s.i2s_rx
+            .with_bclk(peripherals.GPIO37)
+            .with_ws(peripherals.GPIO36)
+            .with_din(peripherals.GPIO18)
+            .build(rx_descriptors),
+    );
+
+    let transfer: esp_hal::dma::DmaTransferRxCircular<'_, I2sRx<'_, Blocking>> =
+        i2s_rx.read_dma_circular(rx_buffer).unwrap();
+
+    static VOLUME: StaticCell<
+        Volume<
+            '_,
+            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+            SdTimeSource,
+            4,
+            4,
+            1,
+        >,
+    > = StaticCell::new();
+    static ROOT_DIR: StaticCell<
+        Directory<
+            '_,
+            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+            SdTimeSource,
+            4,
+            4,
+            1,
+        >,
+    > = StaticCell::new();
+    static BOOT_DIR: StaticCell<
+        Directory<
+            '_,
+            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+            SdTimeSource,
+            4,
+            4,
+            1,
+        >,
+    > = StaticCell::new();
+    static DATA_FILE: StaticCell<
+        File<
+            '_,
+            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+            SdTimeSource,
+            4,
+            4,
+            1,
+        >,
+    > = StaticCell::new();
+    static AUDIO_FILE: StaticCell<
+        File<
+            '_,
+            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+            SdTimeSource,
+            4,
+            4,
+            1,
+        >,
+    > = StaticCell::new();
+
+    let volume = VOLUME.init(
+        sd_card_manager
+            .volume_manager()
+            .open_volume(VolumeIdx(0))
+            .expect("should be able to open volume"),
+    );
+    let root_dir = ROOT_DIR.init(
+        volume
+            .open_root_dir()
+            .expect("should be able to open root dir"),
+    );
+    let boot_dir = BOOT_DIR.init(
+        root_dir
+            .open_dir(sd_card_manager.boot_dir_name())
+            .expect("should be able to open boot dir"),
+    );
+    let data_file = DATA_FILE.init(
+        boot_dir
+            .open_file_in_dir("DATA", Mode::ReadWriteCreateOrTruncate)
+            .expect("should be able to open data file"),
+    );
+    let audio_file = AUDIO_FILE.init(
+        boot_dir
+            .open_file_in_dir("AUDIO", Mode::ReadWriteCreateOrTruncate)
+            .expect("should be able to open audio file"),
+    );
+
+    let audio_writer = SdFileWriter::new(audio_file);
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
@@ -175,6 +302,7 @@ async fn main(spawner: Spawner) {
         OutboundPacketChannel::new(),
         Duration::from_millis(500),
         Delay,
+        AsyncMutex::new(()),
     ));
 
     // SPAWN COMPONENT TASKS
@@ -187,21 +315,23 @@ async fn main(spawner: Spawner) {
             );
             sd_sink: PacketSink<SdByteSink<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                SdByteSink::new(sd_card_manager));
+                SdByteSink::new(data_file));
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                SerialByteSink::new(uart_tx),
+                SerialByteSink::new(uart0_tx),
             );
             serial_source: PacketSource<SerialByteSource<UartRx<'static, Async>>> = (
                 ctx.inbound().publisher().expect("inbound should be publishable"),
-                SerialByteSource::new(uart_rx),
+                SerialByteSource::new(uart0_rx),
             );
             time_sync: TimeSyncComponent = ();
             temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
+            // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
             speaker: SpeakerComponent<'static, PwmController> = (pwm, &sweep::SWEEP[..]);
+            audio_recorder: AudioRecorderComponent<'static> = (transfer, audio_writer);
         }
     }
 
