@@ -187,7 +187,7 @@ async fn main(spawner: Spawner) {
         peripherals.I2S0,
         peripherals.DMA_CH0,
         I2sConfig::new_tdm_philips()
-            .with_sample_rate(Rate::from_hz(6000))
+            .with_sample_rate(Rate::from_hz(8000))
             .with_data_format(DataFormat::Data16Channel16)
             .with_channels(Channels::STEREO),
     )
