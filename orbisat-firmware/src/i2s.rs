@@ -1,5 +1,5 @@
 use core::fmt::Debug;
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::Delay;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::{
     Async, Blocking,
