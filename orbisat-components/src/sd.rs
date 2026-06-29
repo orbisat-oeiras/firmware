@@ -133,6 +133,7 @@ impl<'a, SPI: SpiDevice<u8>> ByteSink for SdByteSink<'a, SPI> {
 
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         self.0.write(buf)?;
+        self.0.flush()?;
 
         Ok(())
     }
