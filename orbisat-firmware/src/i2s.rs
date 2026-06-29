@@ -6,7 +6,11 @@ use esp_hal::{
     dma::{DmaError, DmaTransferRxCircular},
     gpio::Output,
     i2s::master::I2sRx,
+    peripherals::TIMG0,
     spi::master::Spi,
+    system,
+    time::Duration,
+    timer::timg::{self, Wdt},
 };
 use orbipacket::DeviceId;
 use orbisat::comms::CommunicationError;
@@ -45,14 +49,20 @@ impl From<DmaError> for AudioError {
 pub struct AudioRecorderComponent<'a> {
     transfer: DmaTransferRxCircular<'a, I2sRx<'a, Blocking>>,
     writer: SdFileWriter<'a, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>,
+    wdt: &'a mut Wdt<TIMG0<'static>>,
 }
 
 impl<'a> AudioRecorderComponent<'a> {
     pub fn new(
         transfer: DmaTransferRxCircular<'a, I2sRx<'a, Blocking>>,
         writer: SdFileWriter<'a, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>,
+        wdt: &'a mut Wdt<TIMG0<'static>>,
     ) -> Self {
-        Self { transfer, writer }
+        Self {
+            transfer,
+            writer,
+            wdt,
+        }
     }
 }
 
@@ -64,25 +74,20 @@ impl<'a> Component for AudioRecorderComponent<'a> {
     }
 
     async fn run_once(&mut self, ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
-        let mut data = [0u8; 32 * 1024];
-        let mut filled = 0;
-
-        let mut write_slice = &mut data[..];
-        while write_slice.len() > 4 * 1024 {
-            let available = self.transfer.available()?;
-
-            if available > 0 {
-                let to_copy = available.min(write_slice.len());
-                self.transfer.pop(write_slice)?;
-                write_slice = &mut write_slice[to_copy..];
-                filled += to_copy;
-            }
+        let mut data = [0u8; 4 * 1024];
+        let mut available = self.transfer.available()?;
+        while available < 2 * 1024 {
             embassy_futures::yield_now().await;
+            available = self.transfer.available()?;
         }
+
+        let filled = self.transfer.pop(&mut data)?;
 
         defmt::info!("Writing {} bytes", filled);
         // TODO: errors
         self.writer.write(&data[..filled], ctx).await.unwrap();
+        embassy_futures::yield_now().await;
+
         Ok(())
     }
 }

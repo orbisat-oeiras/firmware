@@ -5,11 +5,12 @@
     reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
     holding buffers for the duration of a data transfer."
 )]
+#![allow(clippy::type_complexity)]
 
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::{Delay, Duration};
+use embassy_time::{Delay, Duration, Timer};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_sdmmc::{Directory, File, Mode, SdCard, Volume, VolumeIdx};
 use esp_hal::{
@@ -20,7 +21,8 @@ use esp_hal::{
     i2c::master::{Config as I2cConfig, I2c},
     i2s::master::{Channels, Config as I2sConfig, DataFormat, I2s, I2sRx},
     ledc::timer::config::Duty,
-    timer::timg::TimerGroup,
+    peripherals::TIMG0,
+    timer::timg::{TimerGroup, Wdt},
     uart::{Config as UartConfig, Uart, UartRx, UartTx},
 };
 #[cfg(feature = "esp32s3")]
@@ -181,31 +183,31 @@ async fn main(spawner: Spawner) {
     });
 
     // I2S setup for audio recording
-    let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(64 * 1024, 0);
+    // let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(8 * 1024, 0);
 
-    let i2s = I2s::new(
-        peripherals.I2S0,
-        peripherals.DMA_CH0,
-        I2sConfig::new_tdm_philips()
-            .with_sample_rate(Rate::from_hz(8000))
-            .with_data_format(DataFormat::Data16Channel16)
-            .with_channels(Channels::STEREO),
-    )
-    .unwrap();
-    let i2s = i2s.with_mclk(peripherals.GPIO39);
+    // let i2s = I2s::new(
+    //     peripherals.I2S0,
+    //     peripherals.DMA_CH0,
+    //     I2sConfig::new_tdm_philips()
+    //         .with_sample_rate(Rate::from_hz(6000))
+    //         .with_data_format(DataFormat::Data16Channel16)
+    //         .with_channels(Channels::STEREO),
+    // )
+    // .unwrap();
+    // let i2s = i2s.with_mclk(peripherals.GPIO39);
 
-    static I2S_RX: StaticCell<I2sRx<'_, Blocking>> = StaticCell::new();
+    // static I2S_RX: StaticCell<I2sRx<'_, Blocking>> = StaticCell::new();
 
-    let i2s_rx = I2S_RX.init(
-        i2s.i2s_rx
-            .with_bclk(peripherals.GPIO37)
-            .with_ws(peripherals.GPIO36)
-            .with_din(peripherals.GPIO18)
-            .build(rx_descriptors),
-    );
+    // let i2s_rx = I2S_RX.init(
+    //     i2s.i2s_rx
+    //         .with_bclk(peripherals.GPIO37)
+    //         .with_ws(peripherals.GPIO36)
+    //         .with_din(peripherals.GPIO18)
+    //         .build(rx_descriptors),
+    // );
 
-    let transfer: esp_hal::dma::DmaTransferRxCircular<'_, I2sRx<'_, Blocking>> =
-        i2s_rx.read_dma_circular(rx_buffer).unwrap();
+    // let transfer: esp_hal::dma::DmaTransferRxCircular<'_, I2sRx<'_, Blocking>> =
+    //     i2s_rx.read_dma_circular(rx_buffer).unwrap();
 
     static VOLUME: StaticCell<
         Volume<
@@ -257,6 +259,16 @@ async fn main(spawner: Spawner) {
             1,
         >,
     > = StaticCell::new();
+    static TIMESTAMPS_FILE: StaticCell<
+        File<
+            '_,
+            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+            SdTimeSource,
+            4,
+            4,
+            1,
+        >,
+    > = StaticCell::new();
 
     let volume = VOLUME.init(
         sd_card_manager
@@ -279,13 +291,19 @@ async fn main(spawner: Spawner) {
             .open_file_in_dir("DATA", Mode::ReadWriteCreateOrTruncate)
             .expect("should be able to open data file"),
     );
-    let audio_file = AUDIO_FILE.init(
+    // let audio_file = AUDIO_FILE.init(
+    //     boot_dir
+    //         .open_file_in_dir("AUDIO", Mode::ReadWriteCreateOrTruncate)
+    //         .expect("should be able to open audio file"),
+    // );
+    let timestamps_file = TIMESTAMPS_FILE.init(
         boot_dir
-            .open_file_in_dir("AUDIO", Mode::ReadWriteCreateOrTruncate)
+            .open_file_in_dir("TIME", Mode::ReadWriteCreateOrTruncate)
             .expect("should be able to open audio file"),
     );
 
-    let audio_writer = SdFileWriter::new(audio_file);
+    // let mut audio_writer = SdFileWriter::new(audio_file);
+    let timestamps_writer = SdFileWriter::new(timestamps_file);
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
@@ -312,9 +330,9 @@ async fn main(spawner: Spawner) {
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 ConsoleByteSink,
             );
-            sd_sink: PacketSink<SdByteSink<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
-                ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                SdByteSink::new(data_file));
+            // sd_sink: PacketSink<SdByteSink<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
+            //     ctx.outbound().subscriber().expect("outbound should be subscribable"),
+            //     SdByteSink::new(data_file));
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SerialByteSink::new(uart0_tx),
@@ -329,10 +347,34 @@ async fn main(spawner: Spawner) {
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
             // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
-            speaker: SpeakerComponent<'static, PwmController> = (pwm, &sweep::SWEEP[..]);
-            audio_recorder: AudioRecorderComponent<'static> = (transfer, audio_writer);
+            speaker: SpeakerComponent<'static, PwmController, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (pwm, &sweep::SWEEP[..], timestamps_writer);
+            // audio_recorder: AudioRecorderComponent<'static> = (transfer, audio_writer, wdt);
         }
     }
 
+    // let ctx_handle = ctx
+    //     .to_handle()
+    //     .expect("should be able to get context handle");
+
     info!("Components initialized");
+
+    // loop {
+    //     // let mut buf = [0; 4 * 1024];
+    //     {
+    //         let mut transfer = i2s_rx
+    //             .read_dma(rx_buffer)
+    //             .expect("should be able to read dma");
+    //         while !transfer.is_done() {
+    //             Timer::after(Duration::from_millis(100)).await;
+    //         }
+    //         defmt::info!("Transfer done");
+    //     }
+
+    //     audio_writer
+    //         .write(rx_buffer, &ctx_handle)
+    //         .await
+    //         .expect("should be able to write audio");
+    //     defmt::info!("Wrote audio");
+    //     embassy_futures::yield_now().await;
+    // }
 }
