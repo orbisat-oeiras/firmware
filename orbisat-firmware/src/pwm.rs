@@ -84,4 +84,19 @@ impl SetFrequency for PwmController {
             });
         }
     }
+
+    async fn stop(&mut self) {
+        self.lstimer0.lock(|lstimer0| {
+            let mut channel0 = self
+                .ledc
+                .channel(ChannelNumber::Channel0, self.pin.reborrow());
+            channel0
+                .configure(ChannelConfig {
+                    timer: *lstimer0,
+                    drive_mode: DriveMode::PushPull,
+                    duty_pct: 0,
+                })
+                .expect("should be able to configure ledc channel");
+        })
+    }
 }

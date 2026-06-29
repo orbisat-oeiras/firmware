@@ -18,6 +18,8 @@ impl core::fmt::Debug for SpeakerError {
 
 pub trait SetFrequency {
     fn set_frequency(&mut self, frequency: u32) -> impl Future<Output = ()>;
+
+    fn stop(&mut self) -> impl Future<Output = ()>;
 }
 
 type SweepData<'a> = &'a [(u32, u64)];
