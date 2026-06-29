@@ -140,6 +140,10 @@ impl<'a> ContextHandle<'a> {
         self.tick.next()
     }
 
+    pub fn timestamp(&self) -> Result<Timestamp, TimestampError> {
+        Timestamp::new(Instant::now().as_micros())
+    }
+
     pub async fn lock(&self) -> MutexGuard<'_, CriticalSectionRawMutex, ()> {
         self.mutex.lock().await
     }
