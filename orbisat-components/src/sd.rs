@@ -77,7 +77,7 @@ impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
                     if file.read(&mut buf)? == 1 {
                         buf[0] + 1
                     } else {
-                        return Err(SdError::BootcountUnreadable);
+                        0
                     }
                 }
                 Err(embedded_sdmmc::Error::NotFound) => 0,
