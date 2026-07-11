@@ -337,9 +337,9 @@ async fn main(spawner: Spawner) {
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 ConsoleByteSink,
             );
-            // sd_sink: PacketSink<SdByteSink<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
-            //     ctx.outbound().subscriber().expect("outbound should be subscribable"),
-            //     SdByteSink::new(data_file));
+            sd_sink: PacketSink<SdByteSink<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
+                ctx.outbound().subscriber().expect("outbound should be subscribable"),
+                SdByteSink::new(data_file));
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SerialByteSink::new(uart0_tx),
