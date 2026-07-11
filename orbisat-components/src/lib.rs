@@ -73,12 +73,10 @@ impl<R> ByteSource for SerialByteSource<R>
 where
     R: embedded_io_async::Read,
 {
-    async fn fill(&mut self, buf: &mut [u8]) -> usize {
-        // TODO: error handling
-        self.0
-            .read(buf)
-            .await
-            .expect("should be able to read from serial")
+    type Error = R::Error;
+
+    async fn fill(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.0.read(buf).await
     }
 }
 

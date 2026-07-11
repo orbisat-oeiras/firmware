@@ -90,7 +90,9 @@ where
 }
 
 pub trait ByteSource {
-    fn fill(&mut self, buf: &mut [u8]) -> impl Future<Output = usize>;
+    type Error;
+
+    fn fill(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize, Self::Error>>;
 }
 
 #[derive(Debug)]
@@ -137,7 +139,14 @@ where
 
     async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
         // Start at buf_index so trailing bytes aren't overwritten
-        let filled = self.source.fill(&mut self.buf[self.buf_index..]).await;
+        let filled = match self.source.fill(&mut self.buf[self.buf_index..]).await {
+            Ok(value) => value,
+            Err(_) => {
+                // Return early in case of error, will try again in the next iteration
+                defmt::error!("Byte source error");
+                return Ok(());
+            }
+        };
 
         let (remaining, packets) = Packet::decode_stateless(
             &mut self.buf[..self.buf_index + filled],
