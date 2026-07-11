@@ -117,6 +117,14 @@ async fn main(spawner: Spawner) {
     info!("Initialised peripherals (2/6): UART1");
 
     // I2c for the sensor
+    #[cfg(feature = "esp32")]
+    let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
+        .expect("should be able to construct an I2c")
+        .with_scl(peripherals.GPIO21)
+        .with_sda(peripherals.GPIO22)
+        .into_async();
+
+    #[cfg(feature = "esp32s3")]
     let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
         .expect("should be able to construct an I2c")
         .with_scl(peripherals.GPIO21)
@@ -129,7 +137,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32")]
     let i2c1 = I2c::new(peripherals.I2C1, I2cConfig::default())
         .expect("should be able to construct an I2c")
-        .with_scl(peripherals.GPIO5)
+        .with_scl(peripherals.GPIO19)
         .with_sda(peripherals.GPIO18);
 
     #[cfg(feature = "esp32s3")]
@@ -152,35 +160,138 @@ async fn main(spawner: Spawner) {
     // Spi for SD card
 
     #[cfg(feature = "esp32s3")]
-    let spi_bus = Spi::new(
-        peripherals.SPI2,
-        SpiConfig::default()
-            .with_frequency(Rate::from_khz(400))
-            .with_mode(SpiMode::_0),
-    )
-    .unwrap()
-    .with_sck(peripherals.GPIO12)
-    .with_miso(peripherals.GPIO13)
-    .with_mosi(peripherals.GPIO11)
-    .into_async();
+    let (data_file, timestamps_writer, audio_writer) = {
+        let spi_bus = Spi::new(
+            peripherals.SPI2,
+            SpiConfig::default()
+                .with_frequency(Rate::from_khz(400))
+                .with_mode(SpiMode::_0),
+        )
+        .unwrap()
+        .with_sck(peripherals.GPIO12)
+        .with_miso(peripherals.GPIO13)
+        .with_mosi(peripherals.GPIO11)
+        .into_async();
 
-    let spi_cs = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
-    let spi_dev = ExclusiveDevice::new(spi_bus, spi_cs, Delay)
-        .expect("should be able to create an ExclusiveDevice");
+        let spi_cs = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
+        let spi_dev = ExclusiveDevice::new(spi_bus, spi_cs, Delay)
+            .expect("should be able to create an ExclusiveDevice");
 
-    info!("Initialised peripherals (6/6): SPI");
+        info!("Initialised peripherals (6/6): SPI");
 
-    static SD_CARD_MANAGER: StaticCell<
-        SdCardManager<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>,
-    > = StaticCell::new();
+        static SD_CARD_MANAGER: StaticCell<
+            SdCardManager<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>,
+        > = StaticCell::new();
 
-    let sd_card_manager = SD_CARD_MANAGER.init(match SdCardManager::new(spi_dev) {
-        Ok(m) => m,
-        Err(e) => match e {
-            orbisat_components::sd::SdError::Sd(error) => panic!("sd error: {:?}", error),
-            orbisat_components::sd::SdError::BootcountUnreadable => panic!("bootcount unreadable"),
-        },
-    });
+        let sd_card_manager = SD_CARD_MANAGER.init(match SdCardManager::new(spi_dev) {
+            Ok(m) => m,
+            Err(e) => match e {
+                orbisat_components::sd::SdError::Sd(error) => panic!("sd error: {:?}", error),
+                orbisat_components::sd::SdError::BootcountUnreadable => {
+                    panic!("bootcount unreadable")
+                }
+            },
+        });
+
+        static VOLUME: StaticCell<
+            Volume<
+                '_,
+                SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+                SdTimeSource,
+                4,
+                4,
+                1,
+            >,
+        > = StaticCell::new();
+        static ROOT_DIR: StaticCell<
+            Directory<
+                '_,
+                SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+                SdTimeSource,
+                4,
+                4,
+                1,
+            >,
+        > = StaticCell::new();
+        static BOOT_DIR: StaticCell<
+            Directory<
+                '_,
+                SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+                SdTimeSource,
+                4,
+                4,
+                1,
+            >,
+        > = StaticCell::new();
+        static DATA_FILE: StaticCell<
+            File<
+                '_,
+                SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+                SdTimeSource,
+                4,
+                4,
+                1,
+            >,
+        > = StaticCell::new();
+        static AUDIO_FILE: StaticCell<
+            File<
+                '_,
+                SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+                SdTimeSource,
+                4,
+                4,
+                1,
+            >,
+        > = StaticCell::new();
+        static TIMESTAMPS_FILE: StaticCell<
+            File<
+                '_,
+                SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
+                SdTimeSource,
+                4,
+                4,
+                1,
+            >,
+        > = StaticCell::new();
+
+        let volume = VOLUME.init(
+            sd_card_manager
+                .volume_manager()
+                .open_volume(VolumeIdx(0))
+                .expect("should be able to open volume"),
+        );
+        let root_dir = ROOT_DIR.init(
+            volume
+                .open_root_dir()
+                .expect("should be able to open root dir"),
+        );
+        let boot_dir = BOOT_DIR.init(
+            root_dir
+                .open_dir(sd_card_manager.boot_dir_name())
+                .expect("should be able to open boot dir"),
+        );
+
+        let data_file = DATA_FILE.init(
+            boot_dir
+                .open_file_in_dir("DATA", Mode::ReadWriteCreateOrTruncate)
+                .expect("should be able to open data file"),
+        );
+        let audio_file = AUDIO_FILE.init(
+            boot_dir
+                .open_file_in_dir("AUDIO", Mode::ReadWriteCreateOrTruncate)
+                .expect("should be able to open audio file"),
+        );
+        let timestamps_file = TIMESTAMPS_FILE.init(
+            boot_dir
+                .open_file_in_dir("TIME", Mode::ReadWriteCreateOrTruncate)
+                .expect("should be able to open audio file"),
+        );
+
+        let audio_writer = SdFileWriter::new(audio_file);
+        let timestamps_writer = SdFileWriter::new(timestamps_file);
+
+        (data_file, timestamps_writer, audio_writer)
+    };
 
     // I2S setup for audio recording
     // let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(8 * 1024, 0);
@@ -208,102 +319,6 @@ async fn main(spawner: Spawner) {
 
     // let transfer: esp_hal::dma::DmaTransferRxCircular<'_, I2sRx<'_, Blocking>> =
     //     i2s_rx.read_dma_circular(rx_buffer).unwrap();
-
-    static VOLUME: StaticCell<
-        Volume<
-            '_,
-            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
-            SdTimeSource,
-            4,
-            4,
-            1,
-        >,
-    > = StaticCell::new();
-    static ROOT_DIR: StaticCell<
-        Directory<
-            '_,
-            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
-            SdTimeSource,
-            4,
-            4,
-            1,
-        >,
-    > = StaticCell::new();
-    static BOOT_DIR: StaticCell<
-        Directory<
-            '_,
-            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
-            SdTimeSource,
-            4,
-            4,
-            1,
-        >,
-    > = StaticCell::new();
-    static DATA_FILE: StaticCell<
-        File<
-            '_,
-            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
-            SdTimeSource,
-            4,
-            4,
-            1,
-        >,
-    > = StaticCell::new();
-    static AUDIO_FILE: StaticCell<
-        File<
-            '_,
-            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
-            SdTimeSource,
-            4,
-            4,
-            1,
-        >,
-    > = StaticCell::new();
-    static TIMESTAMPS_FILE: StaticCell<
-        File<
-            '_,
-            SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
-            SdTimeSource,
-            4,
-            4,
-            1,
-        >,
-    > = StaticCell::new();
-
-    let volume = VOLUME.init(
-        sd_card_manager
-            .volume_manager()
-            .open_volume(VolumeIdx(0))
-            .expect("should be able to open volume"),
-    );
-    let root_dir = ROOT_DIR.init(
-        volume
-            .open_root_dir()
-            .expect("should be able to open root dir"),
-    );
-    let boot_dir = BOOT_DIR.init(
-        root_dir
-            .open_dir(sd_card_manager.boot_dir_name())
-            .expect("should be able to open boot dir"),
-    );
-    let data_file = DATA_FILE.init(
-        boot_dir
-            .open_file_in_dir("DATA", Mode::ReadWriteCreateOrTruncate)
-            .expect("should be able to open data file"),
-    );
-    // let audio_file = AUDIO_FILE.init(
-    //     boot_dir
-    //         .open_file_in_dir("AUDIO", Mode::ReadWriteCreateOrTruncate)
-    //         .expect("should be able to open audio file"),
-    // );
-    let timestamps_file = TIMESTAMPS_FILE.init(
-        boot_dir
-            .open_file_in_dir("TIME", Mode::ReadWriteCreateOrTruncate)
-            .expect("should be able to open audio file"),
-    );
-
-    // let mut audio_writer = SdFileWriter::new(audio_file);
-    let timestamps_writer = SdFileWriter::new(timestamps_file);
 
     // Sensor device
     let bme = Bme280Device::new(i2c0);
@@ -337,9 +352,6 @@ async fn main(spawner: Spawner) {
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 ConsoleByteSink,
             );
-            sd_sink: PacketSink<SdFileWriter<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
-                ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                SdFileWriter::new(data_file));
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SerialByteSink::new(uart0_tx),
@@ -354,6 +366,15 @@ async fn main(spawner: Spawner) {
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
             // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
+        }
+    }
+
+    #[cfg(feature = "esp32s3")]
+    components! {
+        (spawner, ctx){
+            sd_sink: PacketSink<SdFileWriter<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
+                ctx.outbound().subscriber().expect("outbound should be subscribable"),
+                SdFileWriter::new(data_file));
             // speaker: SpeakerComponent<'static, PwmController<'static>, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (pwm, &sweep::SWEEP[..], timestamps_writer);
             // audio_recorder: AudioRecorderComponent<'static> = (transfer, audio_writer, wdt);
         }
