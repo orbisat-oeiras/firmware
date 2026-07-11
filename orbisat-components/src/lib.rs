@@ -121,20 +121,16 @@ impl Component for TimeSyncComponent {
         tc: orbipacket::TcPacket,
     ) -> Result<(), Self::Error> {
         let t1 = Instant::now().as_micros();
-        let payload = tc.payload().as_bytes();
+        let received_payload = tc.payload().as_bytes();
 
-        if payload.len() != 8 {
-            return Err(TimeSyncError::BadRequest(payload.len()));
+        if received_payload.len() != 8 {
+            return Err(TimeSyncError::BadRequest(received_payload.len()));
         }
 
-        let t0 = u64::from_le_bytes([
-            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6],
-            payload[7],
-        ]);
         let t2 = Instant::now().as_micros();
 
         let mut payload = [0u8; 3 * 8];
-        payload[..8].copy_from_slice(&t0.to_le_bytes());
+        payload[..8].copy_from_slice(&received_payload[..8]);
         payload[8..16].copy_from_slice(&t1.to_le_bytes());
         payload[16..24].copy_from_slice(&t2.to_le_bytes());
 
