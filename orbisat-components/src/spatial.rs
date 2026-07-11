@@ -1,4 +1,4 @@
-use core::{error, fmt::Debug, str::Utf8Error};
+use core::{fmt::Debug, str::Utf8Error};
 
 use embedded_hal::i2c;
 use mma8x5x::{
@@ -153,7 +153,7 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
         DeviceId::Gps
     }
 
-    async fn run_once(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
         defmt::warn!("BUF: {}", self.buf);
 
         let read = self
@@ -170,7 +170,7 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
             match self.buf[idx] {
                 b'\r' => carriage_return = true,
                 b'\n' if carriage_return => {
-                    let sentence_type = self.nmea.parse(str::from_utf8(&self.buf[..idx])?)?;
+                    let _ = self.nmea.parse(str::from_utf8(&self.buf[..idx])?)?;
                     carriage_return = false;
 
                     self.buf.rotate_left(idx);
