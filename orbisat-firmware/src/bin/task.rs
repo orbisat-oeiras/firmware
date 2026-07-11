@@ -10,19 +10,16 @@
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::{Delay, Duration};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_sdmmc::{Directory, File, Mode, SdCard, Volume, VolumeIdx};
 use esp_hal::{
     Async, Blocking,
     clock::CpuClock,
-    dma_buffers,
     gpio::{Level, Output, OutputConfig},
     i2c::master::{Config as I2cConfig, I2c},
-    i2s::master::{Channels, Config as I2sConfig, DataFormat, I2s, I2sRx},
     ledc::timer::config::Duty,
-    peripherals::TIMG0,
-    timer::timg::{TimerGroup, Wdt},
+    timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart, UartRx, UartTx},
 };
 #[cfg(feature = "esp32s3")]
@@ -42,11 +39,9 @@ use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
     sd::{SdCardManager, SdFileWriter},
-    secondary::SpeakerComponent,
-    spatial::{GnssComponent, Mma8542Component},
+    spatial::Mma8542Component,
 };
-use orbisat_firmware::i2s::AudioRecorderComponent;
-use orbisat_firmware::{components, pwm::PwmController, sweep};
+use orbisat_firmware::{components, pwm::PwmController};
 use orbisat_firmware_config::packet_channel::{
     AsyncMutex, InboundPacketChannel, OutboundPacketChannel,
 };
@@ -100,7 +95,8 @@ async fn main(spawner: Spawner) {
 
     info!("Initialised peripherals (1/6): UART0");
 
-    let (uart1_rx, _) = Uart::new(
+    // Uart for the Gnss
+    let (_uart1_rx, _) = Uart::new(
         peripherals.UART1,
         UartConfig::default().with_baudrate(19200),
     )
@@ -154,7 +150,7 @@ async fn main(spawner: Spawner) {
     info!("Initialised peripherals (5/6): LEDC");
 
     #[cfg(feature = "esp32s3")]
-    let (data_file, timestamps_writer, audio_writer) = {
+    let (data_file, timestamps_writer, _audio_writer) = {
         // Spi for SD card
         let spi_bus = Spi::new(
             peripherals.SPI2,
