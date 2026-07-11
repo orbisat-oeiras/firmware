@@ -154,8 +154,6 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
     }
 
     async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
-        defmt::warn!("BUF: {}", self.buf);
-
         let read = self
             .uart
             .read(&mut self.buf[self.trailing_index..])
@@ -163,8 +161,6 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
             .map_err(|e| GnssError::Uart(e))?;
 
         let mut carriage_return = false;
-
-        defmt::warn!("BUF: {}", self.buf);
 
         for idx in 0..self.trailing_index + read {
             match self.buf[idx] {
@@ -179,8 +175,6 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
                 _ => self.trailing_index += 1,
             }
         }
-
-        defmt::warn!("BUF: {}", self.buf);
 
         Ok(())
     }
