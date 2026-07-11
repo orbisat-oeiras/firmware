@@ -322,6 +322,13 @@ async fn main(spawner: Spawner) {
         AsyncMutex::new(()),
     ));
 
+    // INITIALIZE BME DRIVER
+    bme_mutex
+        .get_mut()
+        .init(&mut Delay)
+        .await
+        .expect("should be able to initialize BME280 driver");
+
     // SPAWN COMPONENT TASKS
 
     components! {
