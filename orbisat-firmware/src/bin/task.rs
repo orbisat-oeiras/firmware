@@ -28,19 +28,20 @@ use orbisat::{
     comms::{PacketSink, PacketSource},
 };
 use orbisat_components::sd::SdTimeSource;
+use orbisat_components::secondary::SpeakerComponent;
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
     sd::{SdCardManager, SdFileWriter},
     spatial::Mma8542Component,
 };
-use orbisat_firmware::{components, peripherals::PeripheralManager};
+use orbisat_firmware::pwm::PwmController;
+use orbisat_firmware::{components, peripherals::PeripheralManager, sweep};
 use orbisat_firmware_config::packet_channel::{
     AsyncMutex, InboundPacketChannel, OutboundPacketChannel,
 };
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
-
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -243,7 +244,7 @@ async fn main(spawner: Spawner) {
             sd_sink: PacketSink<SdFileWriter<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SdFileWriter::new(data_file));
-            // speaker: SpeakerComponent<'static, PwmController<'static>, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (pwm, &sweep::SWEEP[..], timestamps_writer);
+            speaker: SpeakerComponent<'static, PwmController<'static>, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (p.take_pwm().unwrap(), &sweep::SWEEP[..], timestamps_writer);
         }
     }
 
