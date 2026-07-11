@@ -100,7 +100,7 @@ where
 {
     send: InboundPacketChannelPublisher<'static>,
     source: S,
-    buf: [u8; 32],
+    buf: [u8; 512],
     buf_index: usize,
     packet_buf: [Packet; 16],
 }
