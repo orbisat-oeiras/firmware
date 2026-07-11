@@ -104,7 +104,7 @@ pub enum GnssError<R: embedded_io_async::Read> {
     Communication(#[from] CommunicationError),
     #[error(transparent)]
     Utf8(#[from] Utf8Error),
-    #[error("Nema parsing error")]
+    #[error("Nmea parsing error")]
     Nmea,
 }
 
