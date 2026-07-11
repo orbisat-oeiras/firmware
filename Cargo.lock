@@ -1270,6 +1270,7 @@ dependencies = [
  "nmea",
  "orbipacket",
  "orbisat",
+ "paste",
  "thiserror",
 ]
 

@@ -1,8 +1,5 @@
 use bme280::i2c::AsyncBME280;
-use embassy_sync::{
-    blocking_mutex::{self, raw::RawMutex},
-    mutex::Mutex,
-};
+use embassy_sync::{blocking_mutex, mutex::Mutex};
 use embedded_hal_async::{delay::DelayNs, i2c};
 use heapless::Deque;
 use orbipacket::{DeviceId, TimestampError};
@@ -138,120 +135,54 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct Bme280TemperatureSensor<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> {
-    device: &'a Mutex<M, Bme280Device<I2C>>,
+macro_rules! make_bme_sensor {
+    ($name:ident) => {
+        paste::paste! {
+            #[derive(Debug)]
+            pub struct [<Bme280 $name Sensor>]<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> {
+                device: &'a Mutex<M, Bme280Device<I2C>>,
+            }
+
+            impl<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> [<Bme280 $name Sensor>]<'a, I2C, M> {
+                pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
+                    Self { device }
+                }
+            }
+
+            impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: blocking_mutex::raw::RawMutex> Sensor<$name>
+                for [<Bme280 $name Sensor>]<'a, I2C, M>
+            {
+                type Error = Bme280Error<I2C>;
+
+                async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<$name, Self::Error> {
+                    self.device
+                        .lock()
+                        .await
+                        .[<get_ $name:lower _measurement>](ctx)
+                        .await
+                }
+            }
+
+            impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: blocking_mutex::raw::RawMutex> Component
+                for [<Bme280 $name Sensor>]<'a, I2C, M>
+            {
+                type Error = Bme280Error<I2C>;
+
+                fn id(&self) -> DeviceId {
+                    DeviceId::[<$name Sensor>]
+                }
+
+                fn run_once(
+                    &mut self,
+                    ctx: &mut ContextHandle<'_>,
+                ) -> impl Future<Output = Result<(), Self::Error>> {
+                    <Self as Sensor<_>>::run_once(self, ctx, self.id())
+                }
+            }
+        }
+    };
 }
 
-impl<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> Bme280TemperatureSensor<'a, I2C, M> {
-    pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
-        Self { device }
-    }
-}
-
-impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: blocking_mutex::raw::RawMutex> Sensor<Temperature>
-    for Bme280TemperatureSensor<'a, I2C, M>
-{
-    type Error = Bme280Error<I2C>;
-
-    async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Temperature, Self::Error> {
-        self.device
-            .lock()
-            .await
-            .get_temperature_measurement(ctx)
-            .await
-    }
-}
-
-impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
-    for Bme280TemperatureSensor<'a, I2C, M>
-{
-    type Error = Bme280Error<I2C>;
-
-    fn id(&self) -> DeviceId {
-        DeviceId::TemperatureSensor
-    }
-
-    fn run_once(
-        &mut self,
-        ctx: &mut orbisat::ContextHandle<'_>,
-    ) -> impl Future<Output = Result<(), Self::Error>> {
-        <Self as Sensor<_>>::run_once(self, ctx, self.id())
-    }
-}
-
-#[derive(Debug)]
-pub struct Bme280PressureSensor<'a, I2C: i2c::I2c, M: RawMutex> {
-    device: &'a Mutex<M, Bme280Device<I2C>>,
-}
-
-impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280PressureSensor<'a, I2C, M> {
-    pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
-        Self { device }
-    }
-}
-
-impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Pressure>
-    for Bme280PressureSensor<'a, I2C, M>
-{
-    type Error = Bme280Error<I2C>;
-
-    async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Pressure, Self::Error> {
-        self.device.lock().await.get_pressure_measurement(ctx).await
-    }
-}
-
-impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
-    for Bme280PressureSensor<'a, I2C, M>
-{
-    type Error = Bme280Error<I2C>;
-
-    fn id(&self) -> DeviceId {
-        DeviceId::PressureSensor
-    }
-
-    fn run_once(
-        &mut self,
-        ctx: &mut orbisat::ContextHandle<'_>,
-    ) -> impl Future<Output = Result<(), Self::Error>> {
-        <Self as Sensor<_>>::run_once(self, ctx, self.id())
-    }
-}
-
-#[derive(Debug)]
-pub struct Bme280HumiditySensor<'a, I2C: i2c::I2c, M: RawMutex> {
-    device: &'a Mutex<M, Bme280Device<I2C>>,
-}
-
-impl<'a, I2C: i2c::I2c, M: RawMutex> Bme280HumiditySensor<'a, I2C, M> {
-    pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
-        Self { device }
-    }
-}
-
-impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Sensor<Humidity>
-    for Bme280HumiditySensor<'a, I2C, M>
-{
-    type Error = Bme280Error<I2C>;
-
-    async fn read(&mut self, ctx: &mut ContextHandle<'_>) -> Result<Humidity, Self::Error> {
-        self.device.lock().await.get_humidity_measurement(ctx).await
-    }
-}
-
-impl<'a, I2C: i2c::I2c + core::fmt::Debug, M: RawMutex> Component
-    for Bme280HumiditySensor<'a, I2C, M>
-{
-    type Error = Bme280Error<I2C>;
-
-    fn id(&self) -> DeviceId {
-        DeviceId::HumiditySensor
-    }
-
-    fn run_once(
-        &mut self,
-        ctx: &mut orbisat::ContextHandle<'_>,
-    ) -> impl Future<Output = Result<(), Self::Error>> {
-        <Self as Sensor<_>>::run_once(self, ctx, self.id())
-    }
-}
+make_bme_sensor!(Temperature);
+make_bme_sensor!(Pressure);
+make_bme_sensor!(Humidity);
