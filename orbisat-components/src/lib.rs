@@ -49,7 +49,6 @@ where
 
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         defmt::info!("Uart sending");
-        // TODO: proper error handling
         self.0.write_all(buf).await?;
         self.0.flush().await?;
         Ok(())
