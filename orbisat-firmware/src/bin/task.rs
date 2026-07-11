@@ -13,22 +13,15 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_sdmmc::{Directory, File, Mode, SdCard, Volume, VolumeIdx};
+#[cfg(feature = "esp32s3")]
+use esp_hal::spi::master::Spi;
 use esp_hal::{
     Async, Blocking,
     clock::CpuClock,
-    gpio::{Level, Output, OutputConfig},
-    i2c::master::{Config as I2cConfig, I2c},
-    ledc::timer::config::Duty,
+    gpio::Output,
+    i2c::master::I2c,
     timer::timg::TimerGroup,
-    uart::{Config as UartConfig, Uart, UartRx, UartTx},
-};
-#[cfg(feature = "esp32s3")]
-use esp_hal::{
-    spi::{
-        Mode as SpiMode,
-        master::{Config as SpiConfig, Spi},
-    },
-    time::Rate,
+    uart::{UartRx, UartTx},
 };
 use orbisat::{
     Context,
@@ -41,7 +34,7 @@ use orbisat_components::{
     sd::{SdCardManager, SdFileWriter},
     spatial::Mma8542Component,
 };
-use orbisat_firmware::{components, pwm::PwmController};
+use orbisat_firmware::{components, peripherals::PeripheralManager};
 use orbisat_firmware_config::packet_channel::{
     AsyncMutex, InboundPacketChannel, OutboundPacketChannel,
 };
@@ -63,109 +56,20 @@ async fn main(spawner: Spawner) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    // SAFETY: TIMG0 isn't used anywhere else
+    let timg0 = TimerGroup::new(unsafe { peripherals.TIMG0.clone_unchecked() });
     esp_rtos::start(timg0.timer0);
 
     info!("Embassy initialized!");
 
     // GET PERIPHERALS
+    let mut p = PeripheralManager::new(peripherals);
 
-    // Uart for radio comms
-    #[cfg(feature = "esp32")]
-    let (uart0_rx, uart0_tx) = Uart::new(
-        peripherals.UART2,
-        UartConfig::default().with_baudrate(19200),
-    )
-    .expect("should be able to construct a Uart")
-    .with_rx(peripherals.GPIO16)
-    .with_tx(peripherals.GPIO17)
-    .into_async()
-    .split();
-
-    #[cfg(feature = "esp32s3")]
-    let (uart0_rx, uart0_tx) = Uart::new(
-        peripherals.UART2,
-        UartConfig::default().with_baudrate(19200),
-    )
-    .expect("should be able to construct a Uart")
-    .with_rx(peripherals.GPIO2)
-    .with_tx(peripherals.GPIO1)
-    .into_async()
-    .split();
-
-    info!("Initialised peripherals (1/6): UART0");
-
-    // Uart for the Gnss
-    let (_uart1_rx, _) = Uart::new(
-        peripherals.UART1,
-        UartConfig::default().with_baudrate(19200),
-    )
-    .expect("should be able to construct a Uart")
-    .with_rx(peripherals.GPIO3)
-    .with_tx(peripherals.GPIO5)
-    .into_async()
-    .split();
-
-    info!("Initialised peripherals (2/6): UART1");
-
-    // I2c for the sensor
-    #[cfg(feature = "esp32")]
-    let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
-        .expect("should be able to construct an I2c")
-        .with_scl(peripherals.GPIO21)
-        .with_sda(peripherals.GPIO22)
-        .into_async();
-
-    #[cfg(feature = "esp32s3")]
-    let i2c0 = I2c::new(peripherals.I2C0, I2cConfig::default())
-        .expect("should be able to construct an I2c")
-        .with_scl(peripherals.GPIO21)
-        .with_sda(peripherals.GPIO42)
-        .into_async();
-
-    info!("Initialised peripherals (3/6): I2C0");
-
-    // I2c for the accelerometer
-    #[cfg(feature = "esp32")]
-    let i2c1 = I2c::new(peripherals.I2C1, I2cConfig::default())
-        .expect("should be able to construct an I2c")
-        .with_scl(peripherals.GPIO19)
-        .with_sda(peripherals.GPIO18);
-
-    #[cfg(feature = "esp32s3")]
-    let i2c1 = I2c::new(peripherals.I2C1, I2cConfig::default())
-        .expect("should be able to construct an I2c")
-        .with_scl(peripherals.GPIO8)
-        .with_sda(peripherals.GPIO9);
-
-    info!("Initialised peripherals (4/6): I2C1");
-
-    // Pwm for audio output
-
-    #[cfg(feature = "esp32")]
-    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO33, Duty::Duty10Bit);
-    #[cfg(feature = "esp32s3")]
-    let pwm = PwmController::new(peripherals.LEDC, peripherals.GPIO34, Duty::Duty10Bit);
-
-    info!("Initialised peripherals (5/6): LEDC");
-
+    // SETUP SD CARD
     #[cfg(feature = "esp32s3")]
     let (data_file, timestamps_writer, _audio_writer) = {
         // Spi for SD card
-        let spi_bus = Spi::new(
-            peripherals.SPI2,
-            SpiConfig::default()
-                .with_frequency(Rate::from_khz(400))
-                .with_mode(SpiMode::_0),
-        )
-        .unwrap()
-        .with_sck(peripherals.GPIO12)
-        .with_miso(peripherals.GPIO13)
-        .with_mosi(peripherals.GPIO11)
-        .into_async();
-
-        let spi_cs = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
-        let spi_dev = ExclusiveDevice::new(spi_bus, spi_cs, Delay)
+        let spi_dev = ExclusiveDevice::new(p.take_spi().unwrap(), p.take_spi_cs().unwrap(), Delay)
             .expect("should be able to create an ExclusiveDevice");
 
         info!("Initialised peripherals (6/6): SPI");
@@ -285,7 +189,6 @@ async fn main(spawner: Spawner) {
     };
 
     // CREATE CONTEXT
-
     let ctx = CONTEXT.init(Context::new(
         InboundPacketChannel::new(),
         OutboundPacketChannel::new(),
@@ -294,8 +197,11 @@ async fn main(spawner: Spawner) {
         AsyncMutex::new(()),
     ));
 
+    // SPLIT RADIO UART
+    let (uart0_rx, uart0_tx) = p.take_uart0().unwrap().split();
+
     // BME DRIVER
-    let bme = Bme280Device::new(i2c0);
+    let bme = Bme280Device::new(p.take_i2c0().unwrap());
 
     static BME_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Bme280Device<I2c<'_, Async>>>> =
         StaticCell::new();
@@ -326,7 +232,7 @@ async fn main(spawner: Spawner) {
             temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
-            accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
+            accelerometer: Mma8542Component<I2c<'static, Blocking>> = (p.take_i2c1().unwrap()).expect("should be able to create Mma8542Component");
             // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
         }
     }

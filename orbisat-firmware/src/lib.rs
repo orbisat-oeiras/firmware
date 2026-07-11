@@ -5,6 +5,7 @@ pub mod sweep {
 }
 
 pub mod i2s;
+pub mod peripherals;
 pub mod pwm;
 
 #[macro_export]
