@@ -136,6 +136,7 @@ where
     }
 
     async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
+        // Start at buf_index so trailing bytes aren't overwritten
         let filled = self.source.fill(&mut self.buf[self.buf_index..]).await;
 
         let (remaining, packets) = Packet::decode_stateless(
@@ -143,9 +144,12 @@ where
             &mut self.packet_buf,
         )?;
 
+        // Find the index where remaining starts
         let idx =
             (remaining.as_ptr() as usize - self.buf.as_ptr() as usize) / core::mem::size_of::<u8>();
+        // Move remaining to the start of buf
         self.buf.rotate_left(idx);
+        // Point buf_index to the end of the remaining bytes
         self.buf_index += filled - idx;
 
         for packet in packets {
