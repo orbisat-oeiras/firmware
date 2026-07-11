@@ -6,7 +6,7 @@ use embedded_sdmmc::{
     BlockDevice, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
 };
 use heapless::{String, format};
-use orbisat::{ContextHandle, comms::ByteSink};
+use orbisat::comms::ByteSink;
 
 #[derive(Debug)]
 pub struct SdTimeSource;
@@ -118,29 +118,7 @@ impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
     }
 }
 
-pub struct SdByteSink<'a, SPI: SpiDevice<u8>>(
-    &'a mut File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
-);
-
-impl<'a, SPI: SpiDevice<u8>> SdByteSink<'a, SPI> {
-    pub fn new(file: &'a mut File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>) -> Self {
-        Self(file)
-    }
-}
-
-impl<'a, SPI: SpiDevice<u8>> ByteSink for SdByteSink<'a, SPI> {
-    type Error = SdError<SPI>;
-
-    async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        self.0.write(buf)?;
-        self.0.flush()?;
-
-        Ok(())
-    }
-}
-
 pub struct SdFileWriter<'a, SPI: SpiDevice<u8>> {
-    // card: &'a SdCardManager<SPI>,
     file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
 }
 
@@ -148,9 +126,12 @@ impl<'a, SPI: SpiDevice<u8>> SdFileWriter<'a, SPI> {
     pub fn new(file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>) -> Self {
         Self { file }
     }
+}
 
-    pub async fn write(&mut self, buf: &[u8], ctx: &ContextHandle<'_>) -> Result<(), SdError<SPI>> {
-        let _ = ctx.lock().await;
+impl<'a, SPI: SpiDevice<u8>> ByteSink for SdFileWriter<'a, SPI> {
+    type Error = SdError<SPI>;
+
+    async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         self.file.write(buf)?;
         self.file.flush()?;
 

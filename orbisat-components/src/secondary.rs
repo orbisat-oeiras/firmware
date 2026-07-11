@@ -1,7 +1,7 @@
 use embassy_time::{Duration, Timer};
 use embedded_hal::spi::SpiDevice;
 use orbipacket::{DeviceId, TimestampError};
-use orbisat::{Component, comms::CommunicationError};
+use orbisat::{Component, comms::ByteSink, comms::CommunicationError};
 
 use crate::sd::{SdError, SdFileWriter};
 
@@ -63,11 +63,11 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
 
     async fn run_once(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
         if self.forward_sweep {
-            self.writer.write(b"FORWARD SWEEP TIMESTAMP ", ctx).await?;
+            self.writer.sink(b"FORWARD SWEEP TIMESTAMP ").await?;
             self.writer
-                .write(&ctx.timestamp()?.get().to_le_bytes(), ctx)
+                .sink(&ctx.timestamp()?.get().to_le_bytes())
                 .await?;
-            self.writer.write(b"\n", ctx).await?;
+            self.writer.sink(b"\n").await?;
             defmt::info!("Starting forward sweep");
             for (frequency, duration) in self.data {
                 self.pwm.set_frequency(*frequency).await;
@@ -75,11 +75,11 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
             }
             self.forward_sweep = false;
         } else {
-            self.writer.write(b"REVERSE SWEEP TIMESTAMP ", ctx).await?;
+            self.writer.sink(b"REVERSE SWEEP TIMESTAMP ").await?;
             self.writer
-                .write(&ctx.timestamp()?.get().to_le_bytes(), ctx)
+                .sink(&ctx.timestamp()?.get().to_le_bytes())
                 .await?;
-            self.writer.write(b"\n", ctx).await?;
+            self.writer.sink(b"\n").await?;
             defmt::info!("Starting reverse sweep");
             for (frequency, duration) in self.data.iter().rev() {
                 self.pwm.set_frequency(*frequency).await;

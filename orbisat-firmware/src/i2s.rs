@@ -13,7 +13,7 @@ use esp_hal::{
     timer::timg::{self, Wdt},
 };
 use orbipacket::DeviceId;
-use orbisat::comms::CommunicationError;
+use orbisat::comms::{ByteSink, CommunicationError};
 use orbisat::{Component, ContextHandle};
 use orbisat_components::sd::SdFileWriter;
 
@@ -73,7 +73,7 @@ impl<'a> Component for AudioRecorderComponent<'a> {
         DeviceId::Mission2
     }
 
-    async fn run_once(&mut self, ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
         let mut data = [0u8; 4 * 1024];
         let mut available = self.transfer.available()?;
         while available < 2 * 1024 {
@@ -85,7 +85,7 @@ impl<'a> Component for AudioRecorderComponent<'a> {
 
         defmt::info!("Writing {} bytes", filled);
         // TODO: errors
-        self.writer.write(&data[..filled], ctx).await.unwrap();
+        self.writer.sink(&data[..filled]).await.unwrap();
         embassy_futures::yield_now().await;
 
         Ok(())
