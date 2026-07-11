@@ -71,10 +71,6 @@ async fn main(spawner: Spawner) {
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0);
 
-    // let mut usb = UsbSerialJtag::new(peripherals.USB_DEVICE);
-    // let _ = writeln!(usb, "USB alive");
-    // embassy_time::Timer::after(Duration::from_millis(500)).await;
-
     info!("Embassy initialized!");
 
     // GET PERIPHERALS
@@ -157,10 +153,9 @@ async fn main(spawner: Spawner) {
 
     info!("Initialised peripherals (5/6): LEDC");
 
-    // Spi for SD card
-
     #[cfg(feature = "esp32s3")]
     let (data_file, timestamps_writer, audio_writer) = {
+        // Spi for SD card
         let spi_bus = Spi::new(
             peripherals.SPI2,
             SpiConfig::default()
@@ -293,40 +288,6 @@ async fn main(spawner: Spawner) {
         (data_file, timestamps_writer, audio_writer)
     };
 
-    // I2S setup for audio recording
-    // let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(8 * 1024, 0);
-
-    // let i2s = I2s::new(
-    //     peripherals.I2S0,
-    //     peripherals.DMA_CH0,
-    //     I2sConfig::new_tdm_philips()
-    //         .with_sample_rate(Rate::from_hz(6000))
-    //         .with_data_format(DataFormat::Data16Channel16)
-    //         .with_channels(Channels::STEREO),
-    // )
-    // .unwrap();
-    // let i2s = i2s.with_mclk(peripherals.GPIO39);
-
-    // static I2S_RX: StaticCell<I2sRx<'_, Blocking>> = StaticCell::new();
-
-    // let i2s_rx = I2S_RX.init(
-    //     i2s.i2s_rx
-    //         .with_bclk(peripherals.GPIO37)
-    //         .with_ws(peripherals.GPIO36)
-    //         .with_din(peripherals.GPIO18)
-    //         .build(rx_descriptors),
-    // );
-
-    // let transfer: esp_hal::dma::DmaTransferRxCircular<'_, I2sRx<'_, Blocking>> =
-    //     i2s_rx.read_dma_circular(rx_buffer).unwrap();
-
-    // Sensor device
-    let bme = Bme280Device::new(i2c0);
-
-    static BME_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Bme280Device<I2c<'_, Async>>>> =
-        StaticCell::new();
-    let bme_mutex = BME_MUTEX.init(Mutex::new(bme));
-
     // CREATE CONTEXT
 
     let ctx = CONTEXT.init(Context::new(
@@ -337,7 +298,13 @@ async fn main(spawner: Spawner) {
         AsyncMutex::new(()),
     ));
 
-    // INITIALIZE BME DRIVER
+    // BME DRIVER
+    let bme = Bme280Device::new(i2c0);
+
+    static BME_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Bme280Device<I2c<'_, Async>>>> =
+        StaticCell::new();
+    let bme_mutex = BME_MUTEX.init(Mutex::new(bme));
+
     bme_mutex
         .get_mut()
         .init(&mut Delay)
@@ -345,7 +312,6 @@ async fn main(spawner: Spawner) {
         .expect("should be able to initialize BME280 driver");
 
     // SPAWN COMPONENT TASKS
-
     components! {
         (spawner, ctx) {
             console_sink: PacketSink<ConsoleByteSink> = (
@@ -376,33 +342,8 @@ async fn main(spawner: Spawner) {
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SdFileWriter::new(data_file));
             // speaker: SpeakerComponent<'static, PwmController<'static>, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (pwm, &sweep::SWEEP[..], timestamps_writer);
-            // audio_recorder: AudioRecorderComponent<'static> = (transfer, audio_writer, wdt);
         }
     }
 
-    // let ctx_handle = ctx
-    //     .to_handle()
-    //     .expect("should be able to get context handle");
-
     info!("Components initialized");
-
-    // loop {
-    //     // let mut buf = [0; 4 * 1024];
-    //     {
-    //         let mut transfer = i2s_rx
-    //             .read_dma(rx_buffer)
-    //             .expect("should be able to read dma");
-    //         while !transfer.is_done() {
-    //             Timer::after(Duration::from_millis(100)).await;
-    //         }
-    //         defmt::info!("Transfer done");
-    //     }
-
-    //     audio_writer
-    //         .write(rx_buffer, &ctx_handle)
-    //         .await
-    //         .expect("should be able to write audio");
-    //     defmt::info!("Wrote audio");
-    //     embassy_futures::yield_now().await;
-    // }
 }
