@@ -347,7 +347,7 @@ async fn main(spawner: Spawner) {
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             accelerometer: Mma8542Component<I2c<'static, Blocking>> = (i2c1).expect("should be able to create Mma8542Component");
             // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
-            speaker: SpeakerComponent<'static, PwmController, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (pwm, &sweep::SWEEP[..], timestamps_writer);
+            // speaker: SpeakerComponent<'static, PwmController, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (pwm, &sweep::SWEEP[..], timestamps_writer);
             // audio_recorder: AudioRecorderComponent<'static> = (transfer, audio_writer, wdt);
         }
     }
