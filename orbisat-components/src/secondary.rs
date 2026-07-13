@@ -39,6 +39,7 @@ type SweepData<'a> = &'a [(u32, u64)];
 pub struct SpeakerComponent<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> {
     pwm: PWM,
     data: SweepData<'a>,
+    idx: usize,
     forward_sweep: bool,
     running: bool,
     writer: SdFileWriter<'a, SPI>,
@@ -49,6 +50,7 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> SpeakerComponent<'a, PWM, SPI> {
         Self {
             pwm,
             data,
+            idx: 0,
             forward_sweep: true,
             running: false,
             writer,
@@ -65,31 +67,37 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
 
     async fn run_once(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
         if self.running {
-            if self.forward_sweep {
-                self.writer.sink(b"FORWARD SWEEP TIMESTAMP ").await?;
-                self.writer
-                    .sink(&ctx.timestamp()?.get().to_le_bytes())
-                    .await?;
-                self.writer.sink(b"\n").await?;
-                defmt::info!("Starting forward sweep");
-                for (frequency, duration) in self.data {
-                    self.pwm.set_frequency(*frequency).await;
-                    Timer::after(Duration::from_micros(*duration)).await;
-                }
-                self.forward_sweep = false;
-            } else {
-                self.writer.sink(b"REVERSE SWEEP TIMESTAMP ").await?;
-                self.writer
-                    .sink(&ctx.timestamp()?.get().to_le_bytes())
-                    .await?;
-                self.writer.sink(b"\n").await?;
-                defmt::info!("Starting reverse sweep");
-                for (frequency, duration) in self.data.iter().rev() {
-                    self.pwm.set_frequency(*frequency).await;
-                    Timer::after(Duration::from_micros(*duration)).await;
-                }
+            self.pwm.set_frequency(self.data[self.idx].0).await;
+            Timer::after(Duration::from_micros(self.data[self.idx].1)).await;
 
-                self.forward_sweep = true;
+            if self.forward_sweep {
+                if self.idx >= self.data.len() - 1 {
+                    self.writer.sink(b"REVERSE SWEEP TIMESTAMP").await?;
+                    self.writer
+                        .sink(&ctx.timestamp()?.get().to_le_bytes())
+                        .await?;
+                    self.writer.sink(b"\n").await?;
+
+                    defmt::info!("Starting reverse sweep");
+
+                    self.forward_sweep = false;
+                } else {
+                    self.idx += 1;
+                }
+            } else {
+                if self.idx == 0 {
+                    self.writer.sink(b"FORWARD SWEEP TIMESTAMP").await?;
+                    self.writer
+                        .sink(&ctx.timestamp()?.get().to_le_bytes())
+                        .await?;
+                    self.writer.sink(b"\n").await?;
+
+                    defmt::info!("Starting forward sweep");
+
+                    self.forward_sweep = true;
+                } else {
+                    self.idx -= 1;
+                }
             }
         } else {
             embassy_futures::yield_now().await;
