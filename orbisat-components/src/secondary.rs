@@ -113,6 +113,10 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
     ) -> Result<(), Self::Error> {
         self.running = !self.running;
 
+        if !self.running {
+            self.pwm.stop().await;
+        }
+
         Ok(())
     }
 }
