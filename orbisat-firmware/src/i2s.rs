@@ -13,8 +13,11 @@ use esp_hal::{
     timer::timg::{self, Wdt},
 };
 use orbipacket::DeviceId;
-use orbisat::comms::{ByteSink, CommunicationError};
 use orbisat::{Component, ContextHandle};
+use orbisat::{
+    Status,
+    comms::{ByteSink, CommunicationError},
+};
 use orbisat_components::sd::SdFileWriter;
 
 #[derive(Clone)]
@@ -47,6 +50,7 @@ impl From<DmaError> for AudioError {
 }
 
 pub struct AudioRecorderComponent<'a> {
+    status: Status,
     transfer: DmaTransferRxCircular<'a, I2sRx<'a, Blocking>>,
     writer: SdFileWriter<'a, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>,
     wdt: &'a mut Wdt<TIMG0<'static>>,
@@ -59,6 +63,7 @@ impl<'a> AudioRecorderComponent<'a> {
         wdt: &'a mut Wdt<TIMG0<'static>>,
     ) -> Self {
         Self {
+            status: Status::Initialized,
             transfer,
             writer,
             wdt,
@@ -71,6 +76,14 @@ impl<'a> Component for AudioRecorderComponent<'a> {
 
     fn id(&self) -> DeviceId {
         DeviceId::Mission2
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {

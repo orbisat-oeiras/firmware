@@ -9,7 +9,7 @@ use mma8x5x::{
 use nmea::Nmea;
 use orbipacket::{DeviceId, TimestampError};
 use orbisat::{
-    Component,
+    Component, Status,
     comms::CommunicationError,
     sensor::{Sensor, readings::Acceleration},
 };
@@ -48,6 +48,7 @@ impl<I2C: i2c::I2c> From<TimestampError> for Mma8452Error<I2C> {
 }
 
 pub struct Mma8542Component<I2C: i2c::I2c> {
+    status: Status,
     driver: Mma8x5x<I2C, Mma8452, Active>,
 }
 
@@ -60,7 +61,10 @@ impl<I2C: i2c::I2c> Mma8542Component<I2C> {
         driver.set_wake_power_mode(PowerMode::LowNoiseLowPower)?;
 
         let driver = driver.into_active()?;
-        Ok(Self { driver })
+        Ok(Self {
+            status: Status::Initialized,
+            driver,
+        })
     }
 }
 
@@ -86,6 +90,14 @@ impl<I2C: i2c::I2c + core::fmt::Debug> Component for Mma8542Component<I2C> {
 
     fn id(&self) -> orbipacket::DeviceId {
         DeviceId::Accelerometer
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     fn run_once(
@@ -127,6 +139,7 @@ impl<R: embedded_io_async::Read> Debug for GnssError<R> {
 
 #[derive(Debug)]
 pub struct GnssComponent<R: embedded_io_async::Read> {
+    status: Status,
     uart: R,
     nmea: Nmea,
     buf: [u8; nmea::SENTENCE_MAX_LEN],
@@ -138,6 +151,7 @@ impl<R: embedded_io_async::Read> GnssComponent<R> {
         let nmea = Nmea::default();
 
         Self {
+            status: Status::Initialized,
             uart,
             nmea,
             buf: [0u8; _],
@@ -151,6 +165,14 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
 
     fn id(&self) -> DeviceId {
         DeviceId::Gps
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {

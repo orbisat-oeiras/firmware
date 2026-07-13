@@ -11,7 +11,7 @@ use core::convert::Infallible;
 use embassy_time::Instant;
 use orbipacket::{DeviceId, Payload};
 use orbisat::{
-    Component,
+    Component, Status,
     comms::{ByteSink, ByteSource, CommunicationError},
 };
 
@@ -89,11 +89,15 @@ pub enum TimeSyncError {
 }
 
 #[derive(Debug)]
-pub struct TimeSyncComponent;
+pub struct TimeSyncComponent {
+    status: Status,
+}
 
 impl TimeSyncComponent {
     pub fn new() -> Self {
-        Self
+        Self {
+            status: Status::Initialized,
+        }
     }
 }
 
@@ -108,6 +112,14 @@ impl Component for TimeSyncComponent {
 
     fn id(&self) -> DeviceId {
         DeviceId::TimeSync
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {

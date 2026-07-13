@@ -4,7 +4,7 @@ use embedded_hal_async::{delay::DelayNs, i2c};
 use heapless::Deque;
 use orbipacket::{DeviceId, TimestampError};
 use orbisat::{
-    Component, ContextHandle,
+    Component, ContextHandle, Status,
     comms::CommunicationError,
     sensor::{
         Sensor,
@@ -140,12 +140,16 @@ macro_rules! make_bme_sensor {
         paste::paste! {
             #[derive(Debug)]
             pub struct [<Bme280 $name Sensor>]<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> {
+                status: Status,
                 device: &'a Mutex<M, Bme280Device<I2C>>,
             }
 
             impl<'a, I2C: i2c::I2c, M: blocking_mutex::raw::RawMutex> [<Bme280 $name Sensor>]<'a, I2C, M> {
                 pub fn new(device: &'a Mutex<M, Bme280Device<I2C>>) -> Self {
-                    Self { device }
+                    Self {
+                        status: Status::Initialized,
+                        device,
+                    }
                 }
             }
 
@@ -170,6 +174,14 @@ macro_rules! make_bme_sensor {
 
                 fn id(&self) -> DeviceId {
                     DeviceId::[<$name Sensor>]
+                }
+
+                fn status(&self) -> Status {
+                    self.status
+                }
+
+                fn set_status(&mut self, status: Status) {
+                    self.status = status;
                 }
 
                 fn run_once(

@@ -7,7 +7,7 @@ use orbisat_firmware_config::packet_channel::{
     InboundPacketChannelPublisher, OutboundPacketChannelSubscriber,
 };
 
-use crate::{Component, ContextHandle};
+use crate::{Component, ContextHandle, Status};
 
 #[derive(thiserror::Error, Debug)]
 pub enum CommunicationError {
@@ -38,6 +38,7 @@ pub struct PacketSink<S>
 where
     S: ByteSink,
 {
+    status: Status,
     recv: OutboundPacketChannelSubscriber<'static>,
     sink: S,
     buf: [u8; Packet::MAX_ENCODE_BUFFER_SIZE],
@@ -49,6 +50,7 @@ where
 {
     pub fn new(recv: OutboundPacketChannelSubscriber<'static>, sink: S) -> PacketSink<S> {
         Self {
+            status: Status::Initialized,
             recv,
             sink,
             buf: [0; _],
@@ -64,6 +66,14 @@ where
 
     fn id(&self) -> DeviceId {
         DeviceId::System
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     async fn run_once(&mut self, ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
@@ -100,6 +110,7 @@ pub struct PacketSource<S>
 where
     S: ByteSource,
 {
+    status: Status,
     send: InboundPacketChannelPublisher<'static>,
     source: S,
     buf: [u8; 512],
@@ -113,6 +124,7 @@ where
 {
     pub fn new(send: InboundPacketChannelPublisher<'static>, source: S) -> Self {
         Self {
+            status: Status::Initialized,
             send,
             source,
             buf: [0; _],
@@ -135,6 +147,14 @@ where
 
     fn id(&self) -> DeviceId {
         DeviceId::System
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {

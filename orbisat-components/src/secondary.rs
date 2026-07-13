@@ -1,7 +1,10 @@
 use embassy_time::{Duration, Timer};
 use embedded_hal::spi::SpiDevice;
 use orbipacket::{DeviceId, TimestampError};
-use orbisat::{Component, comms::ByteSink, comms::CommunicationError};
+use orbisat::{
+    Component, Status,
+    comms::{ByteSink, CommunicationError},
+};
 
 use crate::sd::{SdError, SdFileWriter};
 
@@ -37,22 +40,22 @@ pub trait SetFrequency {
 type SweepData<'a> = &'a [(u32, u64)];
 
 pub struct SpeakerComponent<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> {
+    status: Status,
     pwm: PWM,
     data: SweepData<'a>,
     idx: usize,
     forward_sweep: bool,
-    running: bool,
     writer: SdFileWriter<'a, SPI>,
 }
 
 impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> SpeakerComponent<'a, PWM, SPI> {
     pub fn new(pwm: PWM, data: SweepData<'a>, writer: SdFileWriter<'a, SPI>) -> Self {
         Self {
+            status: Status::Initialized,
             pwm,
             data,
             idx: 0,
             forward_sweep: true,
-            running: false,
             writer,
         }
     }
@@ -65,8 +68,36 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
         DeviceId::Mission1
     }
 
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
+    }
+
+    async fn run(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+        defmt::info!("Component {} started running", self.id());
+        self.set_status(Status::Paused);
+
+        loop {
+            let result = {
+                self.receive_tc(ctx).await?;
+                self.run_once(ctx).await
+            };
+
+            match result {
+                Ok(_) => {}
+                Err(e) => {
+                    self.set_status(Status::Failed);
+                    return Err(e);
+                }
+            }
+        }
+    }
+
     async fn run_once(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
-        if self.running {
+        if self.status == Status::Running {
             self.pwm.set_frequency(self.data[self.idx].0).await;
             Timer::after(Duration::from_micros(self.data[self.idx].1)).await;
 
@@ -111,10 +142,15 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
         _ctx: &mut orbisat::ContextHandle<'_>,
         _tc: orbipacket::TcPacket,
     ) -> Result<(), Self::Error> {
-        self.running = !self.running;
-
-        if !self.running {
-            self.pwm.stop().await;
+        match self.status {
+            Status::Running => {
+                self.set_status(Status::Paused);
+                self.pwm.stop().await;
+            }
+            Status::Paused => {
+                self.set_status(Status::Running);
+            }
+            _ => {}
         }
 
         Ok(())
