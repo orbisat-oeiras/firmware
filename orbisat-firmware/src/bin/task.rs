@@ -68,7 +68,7 @@ async fn main(spawner: Spawner) {
 
     // SETUP SD CARD
     #[cfg(feature = "esp32s3")]
-    let (data_file, timestamps_writer, _audio_writer) = {
+    let (bootcount, data_file, timestamps_writer, _audio_writer) = {
         // Spi for SD card
         let spi_dev = ExclusiveDevice::new(p.take_spi().unwrap(), p.take_spi_cs().unwrap(), Delay)
             .expect("should be able to create an ExclusiveDevice");
@@ -186,7 +186,12 @@ async fn main(spawner: Spawner) {
         let audio_writer = SdFileWriter::new(audio_file);
         let timestamps_writer = SdFileWriter::new(timestamps_file);
 
-        (data_file, timestamps_writer, audio_writer)
+        (
+            sd_card_manager.bootcount(),
+            data_file,
+            timestamps_writer,
+            audio_writer,
+        )
     };
 
     // CREATE CONTEXT
@@ -229,7 +234,7 @@ async fn main(spawner: Spawner) {
                 ctx.inbound().publisher().expect("inbound should be publishable"),
                 SerialByteSource::new(uart0_rx),
             );
-            time_sync: TimeSyncComponent = ();
+            time_sync: TimeSyncComponent = (bootcount);
             temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);

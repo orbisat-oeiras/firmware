@@ -91,19 +91,15 @@ pub enum TimeSyncError {
 #[derive(Debug)]
 pub struct TimeSyncComponent {
     status: Status,
+    bootcount: u8,
 }
 
 impl TimeSyncComponent {
-    pub fn new() -> Self {
+    pub fn new(bootcount: u8) -> Self {
         Self {
+            bootcount,
             status: Status::Initialized,
         }
-    }
-}
-
-impl Default for TimeSyncComponent {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -135,25 +131,33 @@ impl Component for TimeSyncComponent {
         let t1 = Instant::now().as_micros();
         let received_payload = tc.payload().as_bytes();
 
-        if received_payload.len() != 8 {
-            return Err(TimeSyncError::BadRequest(received_payload.len()));
+        match received_payload.len() {
+            2 if received_payload[..2] == *b"BC" => {
+                ctx.send_outbound(DeviceId::TimeSync, Payload::from_u8(self.bootcount))
+                    .map_err(CommunicationError::from)?
+                    .await;
+
+                Ok(())
+            }
+            8 => {
+                let t2 = Instant::now().as_micros();
+
+                let mut payload = [0u8; 3 * 8];
+                payload[..8].copy_from_slice(&received_payload[..8]);
+                payload[8..16].copy_from_slice(&t1.to_le_bytes());
+                payload[16..24].copy_from_slice(&t2.to_le_bytes());
+
+                ctx.send_outbound(
+                    DeviceId::TimeSync,
+                    // Unwrapping is safe because payload is 24 bytes long
+                    Payload::from_raw_bytes(payload).unwrap(),
+                )
+                .map_err(CommunicationError::from)?
+                .await;
+
+                Ok(())
+            }
+            _ => Err(TimeSyncError::BadRequest(received_payload.len())),
         }
-
-        let t2 = Instant::now().as_micros();
-
-        let mut payload = [0u8; 3 * 8];
-        payload[..8].copy_from_slice(&received_payload[..8]);
-        payload[8..16].copy_from_slice(&t1.to_le_bytes());
-        payload[16..24].copy_from_slice(&t2.to_le_bytes());
-
-        ctx.send_outbound(
-            DeviceId::TimeSync,
-            // Unwrapping is safe because payload is 24 bytes long
-            Payload::from_raw_bytes(payload).unwrap(),
-        )
-        .map_err(Into::<CommunicationError>::into)?
-        .await;
-
-        Ok(())
     }
 }
