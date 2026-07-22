@@ -20,7 +20,6 @@ use esp_hal::{
     clock::CpuClock,
     gpio::Output,
     i2c::master::I2c,
-    timer::timg::TimerGroup,
     uart::{UartRx, UartTx},
 };
 use orbisat::{
@@ -57,15 +56,15 @@ async fn main(spawner: Spawner) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    // SAFETY: TIMG0 isn't used anywhere else
-    let timg0 = TimerGroup::new(unsafe { peripherals.TIMG0.clone_unchecked() });
-    esp_rtos::start(timg0.timer0);
-
-    info!("Embassy initialized!");
-
     // GET PERIPHERALS
     let mut p = PeripheralManager::new(peripherals);
     let mut second_core = p.take_second_core().unwrap();
+
+    // START THE SCHEDULER
+    let timg0 = p.take_timg0().unwrap();
+    esp_rtos::start(timg0.timer0);
+
+    info!("Embassy initialized!");
 
     // SETUP SD CARD
     #[cfg(feature = "esp32s3")]

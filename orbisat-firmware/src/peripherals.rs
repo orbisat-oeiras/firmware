@@ -6,7 +6,8 @@ use esp_hal::{
     Async, Blocking,
     i2c::master::{Config as I2cConfig, I2c},
     ledc::timer::config::Duty,
-    peripherals::Peripherals,
+    peripherals::{Peripherals, TIMG0},
+    timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart},
 };
 
@@ -20,6 +21,7 @@ pub struct PeripheralManager {
     i2c0: Option<I2c<'static, Async>>,
     i2c1: Option<I2c<'static, Blocking>>,
     pwm: Option<PwmController<'static>>,
+    timg0: Option<TimerGroup<'static, TIMG0<'static>>>,
     #[cfg(feature = "esp32s3")]
     second_core: Option<SecondCorePeripheralManager>,
 }
@@ -55,12 +57,15 @@ impl PeripheralManager {
 
         let pwm = PwmController::new(p.LEDC, pins.pwm, Duty::Duty10Bit);
 
+        let timg0 = TimerGroup::new(p.TIMG0);
+
         Self {
             uart0: Some(uart0),
             uart1: Some(uart1),
             i2c0: Some(i2c0),
             i2c1: Some(i2c1),
             pwm: Some(pwm),
+            timg0: Some(timg0),
             second_core: Some(second_core),
         }
     }
@@ -83,6 +88,10 @@ impl PeripheralManager {
 
     pub const fn take_pwm(&mut self) -> Option<PwmController<'static>> {
         self.pwm.take()
+    }
+
+    pub const fn take_timg0(&mut self) -> Option<TimerGroup<'static, TIMG0<'static>>> {
+        self.timg0.take()
     }
 
     #[cfg(feature = "esp32s3")]
