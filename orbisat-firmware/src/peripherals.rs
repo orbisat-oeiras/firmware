@@ -1,3 +1,5 @@
+#[cfg(feature = "esp32s3")]
+use esp_hal::peripherals::{GPIO1, GPIO2, GPIO3, GPIO5, GPIO8, GPIO9, GPIO21, GPIO34, GPIO42};
 #[cfg(feature = "esp32")]
 use esp_hal::peripherals::{GPIO3, GPIO5, GPIO16, GPIO17, GPIO18, GPIO19, GPIO21, GPIO22, GPIO33};
 use esp_hal::{
@@ -7,20 +9,9 @@ use esp_hal::{
     peripherals::Peripherals,
     uart::{Config as UartConfig, Uart},
 };
-#[cfg(feature = "esp32s3")]
-use esp_hal::{
-    gpio::{Level, Output, OutputConfig},
-    peripherals::{
-        GPIO1, GPIO2, GPIO3, GPIO5, GPIO8, GPIO9, GPIO10, GPIO11, GPIO12, GPIO13, GPIO21, GPIO34,
-        GPIO42,
-    },
-    spi::{
-        Mode as SpiMode,
-        master::{Config as SpiConfig, Spi},
-    },
-    time::Rate,
-};
 
+#[cfg(feature = "esp32s3")]
+use crate::peripherals::second_core::SecondCorePeripheralManager;
 use crate::pwm::PwmController;
 
 pub struct PeripheralManager {
@@ -30,14 +21,14 @@ pub struct PeripheralManager {
     i2c1: Option<I2c<'static, Blocking>>,
     pwm: Option<PwmController<'static>>,
     #[cfg(feature = "esp32s3")]
-    spi: Option<Spi<'static, Async>>,
-    #[cfg(feature = "esp32s3")]
-    spi_cs: Option<Output<'static>>,
+    second_core: Option<SecondCorePeripheralManager>,
 }
 
 impl PeripheralManager {
     pub fn new(p: Peripherals) -> Self {
         let pins = PinSet::new(&p);
+
+        let second_core = SecondCorePeripheralManager::new(&p);
 
         let uart0 = Uart::new(p.UART2, UartConfig::default().with_baudrate(19200))
             .expect("should be able to construct Uart0")
@@ -64,32 +55,13 @@ impl PeripheralManager {
 
         let pwm = PwmController::new(p.LEDC, pins.pwm, Duty::Duty10Bit);
 
-        #[cfg(feature = "esp32s3")]
-        let spi = Spi::new(
-            p.SPI2,
-            SpiConfig::default()
-                .with_frequency(Rate::from_khz(400))
-                .with_mode(SpiMode::_0),
-        )
-        .expect("should be able to construct Spi")
-        .with_sck(pins.spi_sck)
-        .with_miso(pins.spi_miso)
-        .with_mosi(pins.spi_mosi)
-        .into_async();
-
-        #[cfg(feature = "esp32s3")]
-        let spi_cs = Output::new(pins.spi_cs, Level::High, OutputConfig::default());
-
         Self {
             uart0: Some(uart0),
             uart1: Some(uart1),
             i2c0: Some(i2c0),
             i2c1: Some(i2c1),
             pwm: Some(pwm),
-            #[cfg(feature = "esp32s3")]
-            spi: Some(spi),
-            #[cfg(feature = "esp32s3")]
-            spi_cs: Some(spi_cs),
+            second_core: Some(second_core),
         }
     }
 
@@ -114,13 +86,8 @@ impl PeripheralManager {
     }
 
     #[cfg(feature = "esp32s3")]
-    pub const fn take_spi(&mut self) -> Option<Spi<'static, Async>> {
-        self.spi.take()
-    }
-
-    #[cfg(feature = "esp32s3")]
-    pub const fn take_spi_cs(&mut self) -> Option<Output<'static>> {
-        self.spi_cs.take()
+    pub const fn take_second_core(&mut self) -> Option<SecondCorePeripheralManager> {
+        self.second_core.take()
     }
 }
 
@@ -167,10 +134,6 @@ struct PinSet {
     i2c1_scl: GPIO8<'static>,
     i2c1_sda: GPIO9<'static>,
     pwm: GPIO34<'static>,
-    spi_sck: GPIO12<'static>,
-    spi_miso: GPIO13<'static>,
-    spi_mosi: GPIO11<'static>,
-    spi_cs: GPIO10<'static>,
 }
 
 #[cfg(feature = "esp32s3")]
@@ -189,10 +152,80 @@ impl PinSet {
                 i2c1_scl: p.GPIO8.clone_unchecked(),
                 i2c1_sda: p.GPIO9.clone_unchecked(),
                 pwm: p.GPIO34.clone_unchecked(),
-                spi_sck: p.GPIO12.clone_unchecked(),
-                spi_miso: p.GPIO13.clone_unchecked(),
-                spi_mosi: p.GPIO11.clone_unchecked(),
-                spi_cs: p.GPIO10.clone_unchecked(),
+            }
+        }
+    }
+}
+
+#[cfg(feature = "esp32s3")]
+pub mod second_core {
+    use esp_hal::{
+        Async,
+        gpio::{Level, Output, OutputConfig},
+        peripherals::{GPIO10, GPIO11, GPIO12, GPIO13, Peripherals},
+        spi::{
+            Mode as SpiMode,
+            master::{Config as SpiConfig, Spi},
+        },
+        time::Rate,
+    };
+
+    pub struct SecondCorePeripheralManager {
+        spi: Option<Spi<'static, Async>>,
+        spi_cs: Option<Output<'static>>,
+    }
+
+    impl SecondCorePeripheralManager {
+        pub fn new(p: &Peripherals) -> Self {
+            let pins = PinSet::new(p);
+
+            let spi = Spi::new(
+                unsafe { p.SPI2.clone_unchecked() },
+                SpiConfig::default()
+                    .with_frequency(Rate::from_khz(400))
+                    .with_mode(SpiMode::_0),
+            )
+            .expect("should be able to construct Spi")
+            .with_sck(pins.spi_sck)
+            .with_miso(pins.spi_miso)
+            .with_mosi(pins.spi_mosi)
+            .into_async();
+
+            let spi_cs = Output::new(pins.spi_cs, Level::High, OutputConfig::default());
+
+            Self {
+                spi: Some(spi),
+                spi_cs: Some(spi_cs),
+            }
+        }
+
+        pub const fn take_spi(&mut self) -> Option<Spi<'static, Async>> {
+            self.spi.take()
+        }
+
+        pub const fn take_spi_cs(&mut self) -> Option<Output<'static>> {
+            self.spi_cs.take()
+        }
+    }
+
+    struct PinSet {
+        spi_sck: GPIO12<'static>,
+        spi_miso: GPIO13<'static>,
+        spi_mosi: GPIO11<'static>,
+        spi_cs: GPIO10<'static>,
+    }
+
+    impl PinSet {
+        fn new(p: &Peripherals) -> Self {
+            // SAFETY: PeripheralManager takes p by value, and doesn't
+            // use any GPIOs, so they're only used here
+            unsafe {
+                Self {
+                    spi_sck: p.GPIO12.clone_unchecked(),
+                    spi_miso: p.GPIO13.clone_unchecked(),
+                    spi_mosi: p.GPIO11.clone_unchecked(),
+                    spi_cs: p.GPIO10.clone_unchecked(),
+                }
             }
         }
     }

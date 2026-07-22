@@ -65,13 +65,18 @@ async fn main(spawner: Spawner) {
 
     // GET PERIPHERALS
     let mut p = PeripheralManager::new(peripherals);
+    let mut second_core = p.take_second_core().unwrap();
 
     // SETUP SD CARD
     #[cfg(feature = "esp32s3")]
     let (bootcount, data_file, timestamps_writer, _audio_writer) = {
         // Spi for SD card
-        let spi_dev = ExclusiveDevice::new(p.take_spi().unwrap(), p.take_spi_cs().unwrap(), Delay)
-            .expect("should be able to create an ExclusiveDevice");
+        let spi_dev = ExclusiveDevice::new(
+            second_core.take_spi().unwrap(),
+            second_core.take_spi_cs().unwrap(),
+            Delay,
+        )
+        .expect("should be able to create an ExclusiveDevice");
 
         info!("Initialised peripherals (6/6): SPI");
 
