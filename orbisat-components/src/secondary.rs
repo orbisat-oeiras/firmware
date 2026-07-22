@@ -76,7 +76,10 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
         self.status = status;
     }
 
-    async fn run(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run(
+        &mut self,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
+    ) -> Result<(), Self::Error> {
         defmt::info!("Component {} started running", self.id());
         self.set_status(Status::Paused);
 
@@ -96,7 +99,10 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
         }
     }
 
-    async fn run_once(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run_once(
+        &mut self,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
+    ) -> Result<(), Self::Error> {
         if self.status == Status::Running {
             self.pwm.set_frequency(self.data[self.idx].0).await;
             Timer::after(Duration::from_micros(self.data[self.idx].1)).await;
@@ -139,7 +145,7 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
 
     async fn handle_tc(
         &mut self,
-        _ctx: &mut orbisat::ContextHandle<'_>,
+        _ctx: &mut orbisat::context::ContextHandle<'_>,
         _tc: orbipacket::TcPacket,
     ) -> Result<(), Self::Error> {
         match self.status {

@@ -23,7 +23,7 @@ macro_rules! components {
                 let $name: $ty = <$ty>::new($($args),*)$(.expect($msg))?;
 
                 #[embassy_executor::task]
-                async fn [<$name _task>](mut c: $ty, mut ctx_handle: orbisat::ContextHandle<'static>) {
+                async fn [<$name _task>](mut c: $ty, mut ctx_handle: orbisat::context::ContextHandle<'static>) {
                     for _ in 0..orbisat_firmware::RETRY_COUNT {
                         match orbisat::Component::run(&mut c, &mut ctx_handle).await {
                             Ok(_) => {},

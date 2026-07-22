@@ -73,7 +73,7 @@ impl<I2C: i2c::I2c + core::fmt::Debug> Sensor<Acceleration> for Mma8542Component
 
     async fn read(
         &mut self,
-        _ctx: &mut orbisat::ContextHandle<'_>,
+        _ctx: &mut orbisat::context::ContextHandle<'_>,
     ) -> Result<Acceleration, Self::Error> {
         let measurement = self.driver.read()?;
 
@@ -102,7 +102,7 @@ impl<I2C: i2c::I2c + core::fmt::Debug> Component for Mma8542Component<I2C> {
 
     fn run_once(
         &mut self,
-        ctx: &mut orbisat::ContextHandle<'_>,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
     ) -> impl Future<Output = Result<(), Self::Error>> {
         <Self as Sensor<_>>::run_once(self, ctx, self.id())
     }
@@ -175,7 +175,10 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
         self.status = status;
     }
 
-    async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run_once(
+        &mut self,
+        _ctx: &mut orbisat::context::ContextHandle<'_>,
+    ) -> Result<(), Self::Error> {
         let read = self
             .uart
             .read(&mut self.buf[self.trailing_index..])

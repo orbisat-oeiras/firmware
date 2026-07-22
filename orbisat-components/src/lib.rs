@@ -118,14 +118,17 @@ impl Component for TimeSyncComponent {
         self.status = status;
     }
 
-    async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run_once(
+        &mut self,
+        _ctx: &mut orbisat::context::ContextHandle<'_>,
+    ) -> Result<(), Self::Error> {
         embassy_futures::yield_now().await;
         Ok(())
     }
 
     async fn handle_tc(
         &mut self,
-        ctx: &mut orbisat::ContextHandle<'_>,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
         tc: orbipacket::TcPacket,
     ) -> Result<(), Self::Error> {
         let t1 = Instant::now().as_micros();

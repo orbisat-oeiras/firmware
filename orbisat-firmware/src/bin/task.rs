@@ -25,8 +25,8 @@ use esp_hal::{
 };
 use esp_rtos::embassy::Executor;
 use orbisat::{
-    Context,
     comms::{PacketSink, PacketSource},
+    context::Context,
 };
 use orbisat_components::sd::SdTimeSource;
 use orbisat_components::secondary::SpeakerComponent;

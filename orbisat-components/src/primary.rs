@@ -4,8 +4,9 @@ use embedded_hal_async::{delay::DelayNs, i2c};
 use heapless::Deque;
 use orbipacket::{DeviceId, TimestampError};
 use orbisat::{
-    Component, ContextHandle, Status,
+    Component, Status,
     comms::CommunicationError,
+    context::ContextHandle,
     sensor::{
         Sensor,
         readings::{Humidity, Pressure, Temperature},
