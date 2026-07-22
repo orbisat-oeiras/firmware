@@ -1377,6 +1377,7 @@ dependencies = [
  "embassy-sync 0.8.0",
  "embassy-time",
  "embedded-hal 1.0.0",
+ "heapless 0.9.3",
  "orbipacket",
  "orbisat-firmware-config",
  "thiserror",

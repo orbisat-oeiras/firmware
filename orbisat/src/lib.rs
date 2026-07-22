@@ -10,6 +10,7 @@ use crate::{comms::CommunicationError, context::ContextHandle};
 
 pub mod comms;
 pub mod context;
+pub mod sd;
 pub mod sensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
