@@ -4,7 +4,6 @@ pub mod sweep {
     include!(concat!(env!("OUT_DIR"), "/sweep.rs"));
 }
 
-pub mod i2s;
 pub mod peripherals;
 pub mod pwm;
 
