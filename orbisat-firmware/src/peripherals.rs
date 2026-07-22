@@ -5,6 +5,7 @@ use esp_hal::peripherals::{GPIO3, GPIO5, GPIO16, GPIO17, GPIO18, GPIO19, GPIO21,
 use esp_hal::{
     Async, Blocking,
     i2c::master::{Config as I2cConfig, I2c},
+    interrupt::software::SoftwareInterruptControl,
     ledc::timer::config::Duty,
     peripherals::{Peripherals, TIMG0},
     timer::timg::TimerGroup,
@@ -22,6 +23,7 @@ pub struct PeripheralManager {
     i2c1: Option<I2c<'static, Blocking>>,
     pwm: Option<PwmController<'static>>,
     timg0: Option<TimerGroup<'static, TIMG0<'static>>>,
+    software_interrupts: Option<SoftwareInterruptControl<'static>>,
     #[cfg(feature = "esp32s3")]
     second_core: Option<SecondCorePeripheralManager>,
 }
@@ -59,6 +61,8 @@ impl PeripheralManager {
 
         let timg0 = TimerGroup::new(p.TIMG0);
 
+        let software_interrupts = SoftwareInterruptControl::new(p.SW_INTERRUPT);
+
         Self {
             uart0: Some(uart0),
             uart1: Some(uart1),
@@ -66,6 +70,7 @@ impl PeripheralManager {
             i2c1: Some(i2c1),
             pwm: Some(pwm),
             timg0: Some(timg0),
+            software_interrupts: Some(software_interrupts),
             second_core: Some(second_core),
         }
     }
@@ -92,6 +97,10 @@ impl PeripheralManager {
 
     pub const fn take_timg0(&mut self) -> Option<TimerGroup<'static, TIMG0<'static>>> {
         self.timg0.take()
+    }
+
+    pub const fn take_software_interrupts(&mut self) -> Option<SoftwareInterruptControl<'static>> {
+        self.software_interrupts.take()
     }
 
     #[cfg(feature = "esp32s3")]

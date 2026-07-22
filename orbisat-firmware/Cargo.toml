@@ -15,9 +15,9 @@ orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git", feat
 
 defmt = "1.0.1"
 
-embassy-executor = { version = "0.9.1", features = ["defmt"] }
+embassy-executor = { version = "0.10.0", features = ["defmt"] }
 embassy-time = { version = "0.5.0", features = ["defmt"] }
-embassy-sync = "0.7.2"
+embassy-sync = "0.8.0"
 embassy-futures = "0.1.2"
 embedded-hal = "1.0.0"
 embedded-hal-bus = { version = "0.3.0", features = ["defmt-03"] }
@@ -26,10 +26,10 @@ embedded-sdmmc = { version = "0.9.0", default-features = false, features = [
 ] }
 
 esp-hal = { version = "1.0.0", features = ["defmt", "unstable"] }
-esp-rtos = { version = "0.2.0", features = ["defmt", "embassy"] }
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt"] }
-esp-backtrace = { version = "0.18.1", features = ["println", "panic-handler"] }
-esp-println = { version = "0.16.1", features = ["defmt-espflash"] }
+esp-rtos = { version = "0.3.0", features = ["defmt", "embassy"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt"] }
+esp-backtrace = { version = "0.19.0", features = ["println", "panic-handler"] }
+esp-println = { version = "0.17.0", features = ["defmt-espflash"] }
 static_cell = "2.1.1"
 paste = "1.0.15"
 

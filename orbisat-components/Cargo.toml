@@ -10,7 +10,7 @@ orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git", feat
     "defmt",
 ] }
 
-embassy-sync = "0.7.2"
+embassy-sync = "0.8.0"
 embassy-time = { version = "0.5.0", features = ["defmt"] }
 defmt = "1.0.1"
 

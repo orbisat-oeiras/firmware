@@ -62,7 +62,8 @@ async fn main(spawner: Spawner) {
 
     // START THE SCHEDULER
     let timg0 = p.take_timg0().unwrap();
-    esp_rtos::start(timg0.timer0);
+    let sw_ints = p.take_software_interrupts().unwrap();
+    esp_rtos::start(timg0.timer0, sw_ints.software_interrupt0);
 
     info!("Embassy initialized!");
 

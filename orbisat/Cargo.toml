@@ -10,7 +10,7 @@ orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git", feat
 ] }
 orbisat-firmware-config = { path = "../orbisat-firmware-config" }
 
-embassy-sync = "0.7.2"
+embassy-sync = "0.8.0"
 embassy-futures = "0.1.2"
 embassy-time = { version = "0.5.0", features = ["defmt"] }
 embedded-hal = "1.0.0"

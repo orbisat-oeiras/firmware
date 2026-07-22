@@ -38,8 +38,10 @@ macro_rules! components {
                 }
 
                 $spawner
-                    .spawn([<$name _task>]($name, $ctx.to_handle().expect("context should be convertible to a handle")))
-                    .expect(concat!("task for ", stringify!($name), " should be spawnable"));
+                    .spawn(
+                        [<$name _task>]($name, $ctx.to_handle().expect("context should be convertible to a handle"))
+                        .expect(concat!("task for ", stringify!($name), " should be spawnable"))
+                    );
             )*
         }
     };

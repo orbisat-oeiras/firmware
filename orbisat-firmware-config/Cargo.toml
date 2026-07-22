@@ -8,4 +8,4 @@ rust-version = "1.88"
 orbipacket = { git = "https://github.com/orbisat-oeiras/orbipacket-rs.git", features = [
     "defmt",
 ] }
-embassy-sync = "0.7.2"
+embassy-sync = "0.8.0"
