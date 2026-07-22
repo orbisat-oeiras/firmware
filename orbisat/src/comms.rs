@@ -76,7 +76,7 @@ where
         self.status = status;
     }
 
-    async fn run_once(&mut self, ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
+    async fn run_once(&mut self, _ctx: &mut ContextHandle<'_>) -> Result<(), Self::Error> {
         let packet = match self.recv.next_message().await {
             WaitResult::Lagged(n) => {
                 return Err(CommunicationError::OutboundPacketLagged(n));
@@ -85,10 +85,7 @@ where
         };
         let packet = packet.encode(&mut self.buf)?;
 
-        let result = {
-            let _ = ctx.lock().await;
-            self.sink.sink(packet).await
-        };
+        let result = self.sink.sink(packet).await;
 
         match result {
             Ok(_) => {}

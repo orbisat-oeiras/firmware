@@ -115,7 +115,6 @@ where
 
     async fn measure(&mut self, ctx: &mut ContextHandle<'_>) -> Result<(), Bme280Error<I2C>> {
         let measurement = {
-            let _ = ctx.lock().await;
             if !self.initialized {
                 self.init(ctx.delay_mut()).await?;
             }

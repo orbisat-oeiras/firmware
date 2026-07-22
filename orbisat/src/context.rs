@@ -1,14 +1,12 @@
 use core::{error::Error, fmt::Display};
 
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    mutex::MutexGuard,
-    pubsub::{WaitResult, publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture},
+use embassy_sync::pubsub::{
+    WaitResult, publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture,
 };
 use embassy_time::{Delay, Duration, Instant, Ticker};
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TimestampError, TmPacket};
 use orbisat_firmware_config::packet_channel::{
-    AsyncMutex, InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
+    InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
     OutboundPacketChannelPublisher,
 };
 
@@ -46,7 +44,6 @@ pub struct Context {
     outbound: OutboundPacketChannel,
     tick_duration: Duration,
     delay: Delay,
-    mutex: AsyncMutex,
 }
 
 impl Context {
@@ -55,14 +52,12 @@ impl Context {
         outbound: OutboundPacketChannel,
         tick_duration: Duration,
         delay: Delay,
-        mutex: AsyncMutex,
     ) -> Self {
         Self {
             inbound,
             outbound,
             tick_duration,
             delay,
-            mutex,
         }
     }
 
@@ -72,7 +67,6 @@ impl Context {
             outbound: self.outbound.publisher()?,
             tick: Ticker::every(self.tick_duration),
             delay: self.delay.clone(),
-            mutex: &self.mutex,
         })
     }
 
@@ -91,7 +85,6 @@ pub struct ContextHandle<'a> {
     outbound: OutboundPacketChannelPublisher<'a>,
     tick: Ticker,
     delay: Delay,
-    mutex: &'a AsyncMutex,
 }
 
 impl<'a> ContextHandle<'a> {
@@ -134,9 +127,5 @@ impl<'a> ContextHandle<'a> {
 
     pub fn timestamp(&self) -> Result<Timestamp, TimestampError> {
         Timestamp::new(Instant::now().as_micros())
-    }
-
-    pub async fn lock(&self) -> MutexGuard<'_, CriticalSectionRawMutex, ()> {
-        self.mutex.lock().await
     }
 }

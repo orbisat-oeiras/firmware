@@ -38,9 +38,7 @@ use orbisat_components::{
 };
 use orbisat_firmware::pwm::PwmController;
 use orbisat_firmware::{components, peripherals::PeripheralManager, sweep};
-use orbisat_firmware_config::packet_channel::{
-    AsyncMutex, InboundPacketChannel, OutboundPacketChannel,
-};
+use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -206,7 +204,6 @@ async fn main(spawner: Spawner) {
         OutboundPacketChannel::new(),
         Duration::from_millis(500),
         Delay,
-        AsyncMutex::new(()),
     ));
 
     // SPLIT RADIO UART
