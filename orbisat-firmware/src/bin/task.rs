@@ -45,8 +45,6 @@ use {esp_backtrace as _, esp_println as _};
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static CONTEXT: StaticCell<Context> = StaticCell::new();
-
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
     // generator version: 1.0.1
@@ -200,6 +198,7 @@ async fn main(spawner: Spawner) {
     };
 
     // CREATE CONTEXT
+    static CONTEXT: StaticCell<Context> = StaticCell::new();
     let ctx = CONTEXT.init(Context::new(
         InboundPacketChannel::new(),
         OutboundPacketChannel::new(),
