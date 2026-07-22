@@ -7,7 +7,7 @@ use esp_hal::{
     i2c::master::{Config as I2cConfig, I2c},
     interrupt::software::SoftwareInterruptControl,
     ledc::timer::config::Duty,
-    peripherals::{Peripherals, TIMG0},
+    peripherals::{CPU_CTRL, Peripherals, TIMG0},
     timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart},
 };
@@ -24,6 +24,7 @@ pub struct PeripheralManager {
     pwm: Option<PwmController<'static>>,
     timg0: Option<TimerGroup<'static, TIMG0<'static>>>,
     software_interrupts: Option<SoftwareInterruptControl<'static>>,
+    cpu_control: Option<CPU_CTRL<'static>>,
     #[cfg(feature = "esp32s3")]
     second_core: Option<SecondCorePeripheralManager>,
 }
@@ -71,6 +72,7 @@ impl PeripheralManager {
             pwm: Some(pwm),
             timg0: Some(timg0),
             software_interrupts: Some(software_interrupts),
+            cpu_control: Some(p.CPU_CTRL),
             second_core: Some(second_core),
         }
     }
@@ -101,6 +103,10 @@ impl PeripheralManager {
 
     pub const fn take_software_interrupts(&mut self) -> Option<SoftwareInterruptControl<'static>> {
         self.software_interrupts.take()
+    }
+
+    pub const fn take_cpu_control(&mut self) -> Option<CPU_CTRL<'static>> {
+        self.cpu_control.take()
     }
 
     #[cfg(feature = "esp32s3")]

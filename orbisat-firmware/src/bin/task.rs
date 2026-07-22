@@ -20,8 +20,10 @@ use esp_hal::{
     clock::CpuClock,
     gpio::Output,
     i2c::master::I2c,
+    system::Stack,
     uart::{UartRx, UartTx},
 };
+use esp_rtos::embassy::Executor;
 use orbisat::{
     Context,
     comms::{PacketSink, PacketSource},
@@ -258,4 +260,26 @@ async fn main(spawner: Spawner) {
     }
 
     info!("Components initialized");
+
+    // START SECOND CORE
+
+    // TODO: the size of this stack is completely arbitrary
+    static CORE1_STACK: StaticCell<Stack<8192>> = StaticCell::new();
+    let core1_stack = CORE1_STACK.init(Stack::new());
+
+    esp_rtos::start_second_core(
+        p.take_cpu_control().unwrap(),
+        sw_ints.software_interrupt1,
+        core1_stack,
+        move || {
+            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+            let executor = EXECUTOR.init(Executor::new());
+
+            executor.run(core1_main);
+        },
+    );
+}
+
+fn core1_main(_spawner: Spawner) {
+    defmt::info!("Hello from Core 1");
 }
