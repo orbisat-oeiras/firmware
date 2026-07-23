@@ -39,7 +39,7 @@ impl PeripheralManager {
     pub fn new(p: Peripherals) -> Self {
         let pins = PinSet::new(&p);
 
-        let uart0 = Uart::new(p.UART0, UartConfig::default().with_baudrate(19200))
+        let uart0 = Uart::new(p.UART2, UartConfig::default().with_baudrate(19200))
             .expect("should be able to construct Uart0")
             .with_rx(pins.uart0_rx)
             .with_tx(pins.uart0_tx)
