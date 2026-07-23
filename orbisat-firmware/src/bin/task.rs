@@ -30,13 +30,15 @@ use orbisat::{
     context::Context,
 };
 use orbisat_components::{
-    ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent,
+    ConsoleByteSink, SerialByteSink, SerialByteSource,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
     sd::{SdCardManager, SdFileWriter, SdTimeSource},
-    secondary::SpeakerComponent,
     spatial::Mma8542Component,
 };
-use orbisat_firmware::{components, peripherals::PeripheralManager, pwm::PwmController, sweep};
+use orbisat_firmware::{
+    components,
+    peripherals::{PeripheralManager, second_core::SecondCorePeripheralManager},
+};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -54,7 +56,6 @@ async fn main(spawner: Spawner) {
 
     // GET PERIPHERALS
     let mut p = PeripheralManager::new(peripherals);
-    let mut second_core = p.take_second_core().unwrap();
 
     // START THE SCHEDULER
     let timg0 = p.take_timg0().unwrap();
@@ -63,13 +64,88 @@ async fn main(spawner: Spawner) {
 
     info!("Embassy initialized!");
 
+    // CREATE CONTEXT
+    static CONTEXT: StaticCell<Context> = StaticCell::new();
+    let ctx = CONTEXT.init(Context::new(
+        InboundPacketChannel::new(),
+        OutboundPacketChannel::new(),
+        SdRequestChannel::new(),
+        Duration::from_millis(500),
+        Delay,
+    ));
+
+    // SPLIT RADIO UART
+    let (uart0_rx, uart0_tx) = p.take_uart0().unwrap().split();
+
+    // BME DRIVER
+    let bme = Bme280Device::new(p.take_i2c0().unwrap());
+
+    static BME_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Bme280Device<I2c<'_, Async>>>> =
+        StaticCell::new();
+    let bme_mutex = BME_MUTEX.init(Mutex::new(bme));
+
+    bme_mutex
+        .get_mut()
+        .init(&mut Delay)
+        .await
+        .expect("should be able to initialize BME280 driver");
+
+    // SPAWN COMPONENT TASKS
+    components! {
+        (spawner, ctx) {
+            console_sink: PacketSink<ConsoleByteSink> = (
+                ctx.outbound().subscriber().expect("outbound should be subscribable"),
+                ConsoleByteSink,
+            );
+            serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
+                ctx.outbound().subscriber().expect("outbound should be subscribable"),
+                SerialByteSink::new(uart0_tx),
+            );
+            serial_source: PacketSource<SerialByteSource<UartRx<'static, Async>>> = (
+                ctx.inbound().publisher().expect("inbound should be publishable"),
+                SerialByteSource::new(uart0_rx),
+            );
+            // TODO: get the bootcount from the second core
+            // time_sync: TimeSyncComponent = (bootcount);
+            temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
+            pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
+            humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
+            accelerometer: Mma8542Component<I2c<'static, Blocking>> = (p.take_i2c1().unwrap()).expect("should be able to create Mma8542Component");
+            // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
+        }
+    }
+
+    info!("Components initialized");
+
+    // START SECOND CORE
+
+    // TODO: the size of this stack is completely arbitrary
+    static CORE1_STACK: StaticCell<Stack<8192>> = StaticCell::new();
+    let core1_stack = CORE1_STACK.init(Stack::new());
+
+    let second_core = p.take_second_core().unwrap();
+
+    esp_rtos::start_second_core(
+        p.take_cpu_control().unwrap(),
+        sw_ints.software_interrupt1,
+        core1_stack,
+        move || {
+            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+            let executor = EXECUTOR.init(Executor::new());
+
+            executor.run(|spawner| core1_main(spawner, second_core));
+        },
+    );
+}
+
+fn core1_main(_spawner: Spawner, mut p: SecondCorePeripheralManager) {
     // SETUP SD CARD
     #[cfg(feature = "esp32s3")]
     let (bootcount, data_file, timestamps_writer, _audio_writer) = {
         // Spi for SD card
         let spi_dev = ExclusiveDevice::new(
-            second_core.take_spi().unwrap(),
-            second_core.take_spi_cs().unwrap(),
+            p.take_spi().unwrap().into_async(),
+            p.take_spi_cs().unwrap(),
             Delay,
         )
         .expect("should be able to create an ExclusiveDevice");
@@ -194,88 +270,4 @@ async fn main(spawner: Spawner) {
             audio_writer,
         )
     };
-
-    // CREATE CONTEXT
-    static CONTEXT: StaticCell<Context> = StaticCell::new();
-    let ctx = CONTEXT.init(Context::new(
-        InboundPacketChannel::new(),
-        OutboundPacketChannel::new(),
-        SdRequestChannel::new(),
-        Duration::from_millis(500),
-        Delay,
-    ));
-
-    // SPLIT RADIO UART
-    let (uart0_rx, uart0_tx) = p.take_uart0().unwrap().split();
-
-    // BME DRIVER
-    let bme = Bme280Device::new(p.take_i2c0().unwrap());
-
-    static BME_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Bme280Device<I2c<'_, Async>>>> =
-        StaticCell::new();
-    let bme_mutex = BME_MUTEX.init(Mutex::new(bme));
-
-    bme_mutex
-        .get_mut()
-        .init(&mut Delay)
-        .await
-        .expect("should be able to initialize BME280 driver");
-
-    // SPAWN COMPONENT TASKS
-    components! {
-        (spawner, ctx) {
-            console_sink: PacketSink<ConsoleByteSink> = (
-                ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                ConsoleByteSink,
-            );
-            serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
-                ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                SerialByteSink::new(uart0_tx),
-            );
-            serial_source: PacketSource<SerialByteSource<UartRx<'static, Async>>> = (
-                ctx.inbound().publisher().expect("inbound should be publishable"),
-                SerialByteSource::new(uart0_rx),
-            );
-            time_sync: TimeSyncComponent = (bootcount);
-            temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
-            pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
-            humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
-            accelerometer: Mma8542Component<I2c<'static, Blocking>> = (p.take_i2c1().unwrap()).expect("should be able to create Mma8542Component");
-            // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
-        }
-    }
-
-    #[cfg(feature = "esp32s3")]
-    components! {
-        (spawner, ctx){
-            sd_sink: PacketSink<SdFileWriter<'static, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>>> = (
-                ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                SdFileWriter::new(data_file));
-            speaker: SpeakerComponent<'static, PwmController<'static>, ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>> = (p.take_pwm().unwrap(), &sweep::SWEEP[..], timestamps_writer);
-        }
-    }
-
-    info!("Components initialized");
-
-    // START SECOND CORE
-
-    // TODO: the size of this stack is completely arbitrary
-    static CORE1_STACK: StaticCell<Stack<8192>> = StaticCell::new();
-    let core1_stack = CORE1_STACK.init(Stack::new());
-
-    esp_rtos::start_second_core(
-        p.take_cpu_control().unwrap(),
-        sw_ints.software_interrupt1,
-        core1_stack,
-        move || {
-            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-            let executor = EXECUTOR.init(Executor::new());
-
-            executor.run(core1_main);
-        },
-    );
-}
-
-fn core1_main(_spawner: Spawner) {
-    defmt::info!("Hello from Core 1");
 }
