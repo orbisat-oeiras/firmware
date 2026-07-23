@@ -7,6 +7,10 @@
 )]
 #![allow(clippy::type_complexity)]
 
+use core::sync::atomic::AtomicU8;
+#[cfg(feature = "esp32s3")]
+use core::sync::atomic::Ordering;
+
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
@@ -32,12 +36,15 @@ use orbisat::{
     comms::{PacketSink, PacketSource},
     context::Context,
 };
-#[cfg(feature = "esp32s3")]
-use orbisat_components::sd::{SdCardManager, SdFileWriter, SdTimeSource};
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
     spatial::Mma8542Component,
+};
+#[cfg(feature = "esp32s3")]
+use orbisat_components::{
+    TimeSyncComponent,
+    sd::{SdCardManager, SdFileWriter, SdTimeSource},
 };
 #[cfg(feature = "esp32s3")]
 use orbisat_firmware::peripherals::second_core::SecondCorePeripheralManager;
@@ -47,6 +54,8 @@ use {esp_backtrace as _, esp_println as _};
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
+static BOOTCOUNT: AtomicU8 = AtomicU8::new(0);
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
@@ -108,8 +117,7 @@ async fn main(spawner: Spawner) {
                 ctx.inbound().publisher().expect("inbound should be publishable"),
                 SerialByteSource::new(uart0_rx),
             );
-            // TODO: get the bootcount from the second core
-            // time_sync: TimeSyncComponent = (bootcount);
+            time_sync: TimeSyncComponent<'static> = (&BOOTCOUNT);
             temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
@@ -276,4 +284,7 @@ fn core1_main(_spawner: Spawner, mut p: SecondCorePeripheralManager) {
             audio_writer,
         )
     };
+
+    BOOTCOUNT.store(bootcount, Ordering::Relaxed);
+    defmt::info!("Stored global bootcount");
 }

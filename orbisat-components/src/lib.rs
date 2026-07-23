@@ -6,7 +6,10 @@ pub mod sd;
 pub mod secondary;
 pub mod spatial;
 
-use core::convert::Infallible;
+use core::{
+    convert::Infallible,
+    sync::atomic::{AtomicU8, Ordering},
+};
 
 use embassy_time::Instant;
 use orbipacket::{DeviceId, Payload};
@@ -89,13 +92,13 @@ pub enum TimeSyncError {
 }
 
 #[derive(Debug)]
-pub struct TimeSyncComponent {
+pub struct TimeSyncComponent<'a> {
     status: Status,
-    bootcount: u8,
+    bootcount: &'a AtomicU8,
 }
 
-impl TimeSyncComponent {
-    pub fn new(bootcount: u8) -> Self {
+impl<'a> TimeSyncComponent<'a> {
+    pub fn new(bootcount: &'a AtomicU8) -> Self {
         Self {
             bootcount,
             status: Status::Initialized,
@@ -103,7 +106,7 @@ impl TimeSyncComponent {
     }
 }
 
-impl Component for TimeSyncComponent {
+impl<'a> Component for TimeSyncComponent<'a> {
     type Error = TimeSyncError;
 
     fn id(&self) -> DeviceId {
@@ -136,9 +139,12 @@ impl Component for TimeSyncComponent {
 
         match received_payload.len() {
             2 if received_payload[..2] == *b"BC" => {
-                ctx.send_outbound(DeviceId::TimeSync, Payload::from_u8(self.bootcount))
-                    .await
-                    .map_err(CommunicationError::from)?;
+                ctx.send_outbound(
+                    DeviceId::TimeSync,
+                    Payload::from_u8(self.bootcount.load(Ordering::Relaxed)),
+                )
+                .await
+                .map_err(CommunicationError::from)?;
 
                 Ok(())
             }
