@@ -107,7 +107,8 @@ impl<'a> ContextHandle<'a> {
 
     pub async fn send_outbound_raw(&self, message: Packet) {
         self.outbound.publish(message).await;
-        self.sd_requests.send(SdRequest::WritePacket(message)).await;
+        // TODO: enable this once there's something to consume the requests
+        // self.sd_requests.send(SdRequest::WritePacket(message)).await;
     }
 
     pub async fn send_outbound(
