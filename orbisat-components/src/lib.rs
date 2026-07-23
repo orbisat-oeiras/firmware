@@ -11,7 +11,7 @@ use core::convert::Infallible;
 use embassy_time::Instant;
 use orbipacket::{DeviceId, Payload};
 use orbisat::{
-    Component,
+    Component, Status,
     comms::{ByteSink, ByteSource, CommunicationError},
 };
 
@@ -49,7 +49,6 @@ where
 
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         defmt::info!("Uart sending");
-        // TODO: proper error handling
         self.0.write_all(buf).await?;
         self.0.flush().await?;
         Ok(())
@@ -74,12 +73,10 @@ impl<R> ByteSource for SerialByteSource<R>
 where
     R: embedded_io_async::Read,
 {
-    async fn fill(&mut self, buf: &mut [u8]) -> usize {
-        // TODO: error handling
-        self.0
-            .read(buf)
-            .await
-            .expect("should be able to read from serial")
+    type Error = R::Error;
+
+    async fn fill(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.0.read(buf).await
     }
 }
 
@@ -92,17 +89,17 @@ pub enum TimeSyncError {
 }
 
 #[derive(Debug)]
-pub struct TimeSyncComponent;
-
-impl TimeSyncComponent {
-    pub fn new() -> Self {
-        Self
-    }
+pub struct TimeSyncComponent {
+    status: Status,
+    bootcount: u8,
 }
 
-impl Default for TimeSyncComponent {
-    fn default() -> Self {
-        Self::new()
+impl TimeSyncComponent {
+    pub fn new(bootcount: u8) -> Self {
+        Self {
+            bootcount,
+            status: Status::Initialized,
+        }
     }
 }
 
@@ -111,6 +108,14 @@ impl Component for TimeSyncComponent {
 
     fn id(&self) -> DeviceId {
         DeviceId::TimeSync
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
     }
 
     async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
@@ -124,31 +129,35 @@ impl Component for TimeSyncComponent {
         tc: orbipacket::TcPacket,
     ) -> Result<(), Self::Error> {
         let t1 = Instant::now().as_micros();
-        let payload = tc.payload().as_bytes();
+        let received_payload = tc.payload().as_bytes();
 
-        if payload.len() != 8 {
-            return Err(TimeSyncError::BadRequest(payload.len()));
+        match received_payload.len() {
+            2 if received_payload[..2] == *b"BC" => {
+                ctx.send_outbound(DeviceId::TimeSync, Payload::from_u8(self.bootcount))
+                    .map_err(CommunicationError::from)?
+                    .await;
+
+                Ok(())
+            }
+            8 => {
+                let t2 = Instant::now().as_micros();
+
+                let mut payload = [0u8; 3 * 8];
+                payload[..8].copy_from_slice(&received_payload[..8]);
+                payload[8..16].copy_from_slice(&t1.to_le_bytes());
+                payload[16..24].copy_from_slice(&t2.to_le_bytes());
+
+                ctx.send_outbound(
+                    DeviceId::TimeSync,
+                    // Unwrapping is safe because payload is 24 bytes long
+                    Payload::from_raw_bytes(payload).unwrap(),
+                )
+                .map_err(CommunicationError::from)?
+                .await;
+
+                Ok(())
+            }
+            _ => Err(TimeSyncError::BadRequest(received_payload.len())),
         }
-
-        let t0 = u64::from_le_bytes([
-            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6],
-            payload[7],
-        ]);
-        let t2 = Instant::now().as_micros();
-
-        let mut payload = [0u8; 3 * 8];
-        payload[..8].copy_from_slice(&t0.to_le_bytes());
-        payload[8..16].copy_from_slice(&t1.to_le_bytes());
-        payload[16..24].copy_from_slice(&t2.to_le_bytes());
-
-        ctx.send_outbound(
-            DeviceId::TimeSync,
-            // Unwrapping is safe because payload is 24 bytes long
-            Payload::from_raw_bytes(payload).unwrap(),
-        )
-        .map_err(Into::<CommunicationError>::into)?
-        .await;
-
-        Ok(())
     }
 }

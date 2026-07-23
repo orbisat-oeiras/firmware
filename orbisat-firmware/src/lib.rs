@@ -5,7 +5,10 @@ pub mod sweep {
 }
 
 pub mod i2s;
+pub mod peripherals;
 pub mod pwm;
+
+pub const RETRY_COUNT: usize = 10;
 
 #[macro_export]
 macro_rules! components {
@@ -22,7 +25,7 @@ macro_rules! components {
 
                 #[embassy_executor::task]
                 async fn [<$name _task>](mut c: $ty, mut ctx_handle: orbisat::ContextHandle<'static>) {
-                    loop {
+                    for _ in 0..orbisat_firmware::RETRY_COUNT {
                         match orbisat::Component::run(&mut c, &mut ctx_handle).await {
                             Ok(_) => {},
                             Err(e) => {
@@ -30,8 +33,9 @@ macro_rules! components {
                                 esp_println::println!("error: {:?}", e);
                             }
                         }
-                        embassy_futures::yield_now().await;
+                        embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
                     }
+                    defmt::error!("`run` future for {} failed too many times, giving up", stringify!($name));
                 }
 
                 $spawner

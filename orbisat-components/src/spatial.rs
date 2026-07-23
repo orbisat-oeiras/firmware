@@ -1,4 +1,4 @@
-use core::{error, fmt::Debug, str::Utf8Error};
+use core::{fmt::Debug, str::Utf8Error};
 
 use embedded_hal::i2c;
 use mma8x5x::{
@@ -9,7 +9,7 @@ use mma8x5x::{
 use nmea::Nmea;
 use orbipacket::{DeviceId, TimestampError};
 use orbisat::{
-    Component,
+    Component, Status,
     comms::CommunicationError,
     sensor::{Sensor, readings::Acceleration},
 };
@@ -48,6 +48,7 @@ impl<I2C: i2c::I2c> From<TimestampError> for Mma8452Error<I2C> {
 }
 
 pub struct Mma8542Component<I2C: i2c::I2c> {
+    status: Status,
     driver: Mma8x5x<I2C, Mma8452, Active>,
 }
 
@@ -60,7 +61,10 @@ impl<I2C: i2c::I2c> Mma8542Component<I2C> {
         driver.set_wake_power_mode(PowerMode::LowNoiseLowPower)?;
 
         let driver = driver.into_active()?;
-        Ok(Self { driver })
+        Ok(Self {
+            status: Status::Initialized,
+            driver,
+        })
     }
 }
 
@@ -88,6 +92,14 @@ impl<I2C: i2c::I2c + core::fmt::Debug> Component for Mma8542Component<I2C> {
         DeviceId::Accelerometer
     }
 
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
+    }
+
     fn run_once(
         &mut self,
         ctx: &mut orbisat::ContextHandle<'_>,
@@ -104,7 +116,7 @@ pub enum GnssError<R: embedded_io_async::Read> {
     Communication(#[from] CommunicationError),
     #[error(transparent)]
     Utf8(#[from] Utf8Error),
-    #[error("Nema parsing error")]
+    #[error("Nmea parsing error")]
     Nmea,
 }
 
@@ -127,6 +139,7 @@ impl<R: embedded_io_async::Read> Debug for GnssError<R> {
 
 #[derive(Debug)]
 pub struct GnssComponent<R: embedded_io_async::Read> {
+    status: Status,
     uart: R,
     nmea: Nmea,
     buf: [u8; nmea::SENTENCE_MAX_LEN],
@@ -138,6 +151,7 @@ impl<R: embedded_io_async::Read> GnssComponent<R> {
         let nmea = Nmea::default();
 
         Self {
+            status: Status::Initialized,
             uart,
             nmea,
             buf: [0u8; _],
@@ -153,9 +167,15 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
         DeviceId::Gps
     }
 
-    async fn run_once(&mut self, ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
-        defmt::warn!("BUF: {}", self.buf);
+    fn status(&self) -> Status {
+        self.status
+    }
 
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
+    }
+
+    async fn run_once(&mut self, _ctx: &mut orbisat::ContextHandle<'_>) -> Result<(), Self::Error> {
         let read = self
             .uart
             .read(&mut self.buf[self.trailing_index..])
@@ -164,13 +184,11 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
 
         let mut carriage_return = false;
 
-        defmt::warn!("BUF: {}", self.buf);
-
         for idx in 0..self.trailing_index + read {
             match self.buf[idx] {
                 b'\r' => carriage_return = true,
                 b'\n' if carriage_return => {
-                    let sentence_type = self.nmea.parse(str::from_utf8(&self.buf[..idx])?)?;
+                    let _ = self.nmea.parse(str::from_utf8(&self.buf[..idx])?)?;
                     carriage_return = false;
 
                     self.buf.rotate_left(idx);
@@ -179,8 +197,6 @@ impl<R: embedded_io_async::Read> Component for GnssComponent<R> {
                 _ => self.trailing_index += 1,
             }
         }
-
-        defmt::warn!("BUF: {}", self.buf);
 
         Ok(())
     }
