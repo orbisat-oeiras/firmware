@@ -184,7 +184,7 @@ impl PinSet {
 #[cfg(feature = "esp32s3")]
 pub mod second_core {
     use esp_hal::{
-        Async,
+        Blocking,
         gpio::{Level, Output, OutputConfig},
         peripherals::{GPIO10, GPIO11, GPIO12, GPIO13, Peripherals},
         spi::{
@@ -195,7 +195,7 @@ pub mod second_core {
     };
 
     pub struct SecondCorePeripheralManager {
-        spi: Option<Spi<'static, Async>>,
+        spi: Option<Spi<'static, Blocking>>,
         spi_cs: Option<Output<'static>>,
     }
 
@@ -212,8 +212,7 @@ pub mod second_core {
             .expect("should be able to construct Spi")
             .with_sck(pins.spi_sck)
             .with_miso(pins.spi_miso)
-            .with_mosi(pins.spi_mosi)
-            .into_async();
+            .with_mosi(pins.spi_mosi);
 
             let spi_cs = Output::new(pins.spi_cs, Level::High, OutputConfig::default());
 
@@ -223,7 +222,7 @@ pub mod second_core {
             }
         }
 
-        pub const fn take_spi(&mut self) -> Option<Spi<'static, Async>> {
+        pub const fn take_spi(&mut self) -> Option<Spi<'static, Blocking>> {
             self.spi.take()
         }
 
