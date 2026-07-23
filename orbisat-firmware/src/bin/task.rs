@@ -149,12 +149,7 @@ async fn main(spawner: Spawner) {
                 let executor = EXECUTOR.init(Executor::new());
 
                 executor.run(|spawner| {
-                    core1_main(
-                        spawner,
-                        second_core,
-                        ctx.to_handle().expect("should be able to get handle"),
-                        ctx.sd_request_receiver(),
-                    )
+                    core1_main(spawner, second_core, &*ctx, ctx.sd_request_receiver())
                 });
             },
         );
@@ -165,7 +160,7 @@ async fn main(spawner: Spawner) {
 fn core1_main(
     spawner: Spawner,
     mut p: SecondCorePeripheralManager,
-    ctx: ContextHandle<'static>,
+    ctx: &'static Context,
     receiver: SdRequestChannelReceiver<'static>,
 ) {
     // SETUP SD CARD
@@ -329,5 +324,12 @@ fn core1_main(
         defmt::error!("`run` future for sd failed too many times, giving up");
     }
 
-    spawner.spawn(sd_task(sd, ctx).expect("task for sd should be spawnable"));
+    spawner.spawn(
+        sd_task(
+            sd,
+            ctx.to_handle()
+                .expect("should be able to get context handle"),
+        )
+        .expect("task for sd should be spawnable"),
+    );
 }
