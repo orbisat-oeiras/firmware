@@ -9,7 +9,7 @@ use crate::{
     sd::SdRequest,
 };
 use embassy_sync::pubsub::{WaitResult, subscriber::SubscriberWaitFuture};
-use embassy_time::{Delay, Duration, Instant, Ticker};
+use embassy_time::{Delay, Duration, Instant, Ticker, Timer};
 use heapless::String;
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TimestampError, TmPacket};
 
@@ -112,8 +112,17 @@ impl<'a> ContextHandle<'a> {
 
     pub async fn send_outbound_raw(&self, message: Packet) {
         self.outbound.publish(message).await;
-        // TODO: enable this once there's something to consume the requests
-        self.sd_requests.send(SdRequest::WritePacket(message)).await;
+        // If the channel is full, just ignore it.
+        // This prevents the main core from blocking
+        // if anything goes wrong on the second core.
+        // However, wait 50 us to avoid dropping packets
+        // if the channel just happened to be full at
+        // this specific instant.
+        embassy_futures::select::select(
+            Timer::after(Duration::from_micros(50)),
+            self.sd_requests.send(SdRequest::WritePacket(message)),
+        )
+        .await;
     }
 
     pub async fn send_outbound(
