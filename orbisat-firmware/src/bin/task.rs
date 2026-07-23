@@ -11,34 +11,37 @@ use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Delay, Duration};
+#[cfg(feature = "esp32s3")]
 use embedded_hal_bus::spi::ExclusiveDevice;
+#[cfg(feature = "esp32s3")]
 use embedded_sdmmc::{Directory, File, Mode, SdCard, Volume, VolumeIdx};
 #[cfg(feature = "esp32s3")]
-use esp_hal::spi::master::Spi;
+use esp_hal::gpio::Output;
 use esp_hal::{
     Async, Blocking,
     clock::CpuClock,
-    gpio::Output,
     i2c::master::I2c,
-    system::Stack,
     uart::{UartRx, UartTx},
 };
+#[cfg(feature = "esp32s3")]
+use esp_hal::{spi::master::Spi, system::Stack};
+#[cfg(feature = "esp32s3")]
 use esp_rtos::embassy::Executor;
 use orbisat::{
     channels::{InboundPacketChannel, OutboundPacketChannel, SdRequestChannel},
     comms::{PacketSink, PacketSource},
     context::Context,
 };
+#[cfg(feature = "esp32s3")]
+use orbisat_components::sd::{SdCardManager, SdFileWriter, SdTimeSource};
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
-    sd::{SdCardManager, SdFileWriter, SdTimeSource},
     spatial::Mma8542Component,
 };
-use orbisat_firmware::{
-    components,
-    peripherals::{PeripheralManager, second_core::SecondCorePeripheralManager},
-};
+#[cfg(feature = "esp32s3")]
+use orbisat_firmware::peripherals::second_core::SecondCorePeripheralManager;
+use orbisat_firmware::{components, peripherals::PeripheralManager};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -119,28 +122,31 @@ async fn main(spawner: Spawner) {
 
     // START SECOND CORE
 
-    // TODO: the size of this stack is completely arbitrary
-    static CORE1_STACK: StaticCell<Stack<8192>> = StaticCell::new();
-    let core1_stack = CORE1_STACK.init(Stack::new());
+    #[cfg(feature = "esp32s3")]
+    {
+        // TODO: the size of this stack is completely arbitrary
+        static CORE1_STACK: StaticCell<Stack<8192>> = StaticCell::new();
+        let core1_stack = CORE1_STACK.init(Stack::new());
 
-    let second_core = p.take_second_core().unwrap();
+        let second_core = p.take_second_core().unwrap();
 
-    esp_rtos::start_second_core(
-        p.take_cpu_control().unwrap(),
-        sw_ints.software_interrupt1,
-        core1_stack,
-        move || {
-            static EXECUTOR: StaticCell<Executor> = StaticCell::new();
-            let executor = EXECUTOR.init(Executor::new());
+        esp_rtos::start_second_core(
+            p.take_cpu_control().unwrap(),
+            sw_ints.software_interrupt1,
+            core1_stack,
+            move || {
+                static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+                let executor = EXECUTOR.init(Executor::new());
 
-            executor.run(|spawner| core1_main(spawner, second_core));
-        },
-    );
+                executor.run(|spawner| core1_main(spawner, second_core));
+            },
+        );
+    }
 }
 
+#[cfg(feature = "esp32s3")]
 fn core1_main(_spawner: Spawner, mut p: SecondCorePeripheralManager) {
     // SETUP SD CARD
-    #[cfg(feature = "esp32s3")]
     let (bootcount, data_file, timestamps_writer, _audio_writer) = {
         // Spi for SD card
         let spi_dev = ExclusiveDevice::new(

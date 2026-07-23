@@ -33,6 +33,7 @@ impl PeripheralManager {
     pub fn new(p: Peripherals) -> Self {
         let pins = PinSet::new(&p);
 
+        #[cfg(feature = "esp32s3")]
         let second_core = SecondCorePeripheralManager::new(&p);
 
         let uart0 = Uart::new(p.UART2, UartConfig::default().with_baudrate(19200))
@@ -73,6 +74,7 @@ impl PeripheralManager {
             timg0: Some(timg0),
             software_interrupts: Some(software_interrupts),
             cpu_control: Some(p.CPU_CTRL),
+            #[cfg(feature = "esp32s3")]
             second_core: Some(second_core),
         }
     }
