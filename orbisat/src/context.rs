@@ -3,7 +3,8 @@ use core::{error::Error, fmt::Display};
 use crate::{
     channels::{
         InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
-        OutboundPacketChannelPublisher, SdRequestChannel, SdRequestChannelSender,
+        OutboundPacketChannelPublisher, SdRequestChannel, SdRequestChannelReceiver,
+        SdRequestChannelSender,
     },
     sd::SdRequest,
 };
@@ -83,6 +84,10 @@ impl Context {
     pub fn outbound(&self) -> &OutboundPacketChannel {
         &self.outbound
     }
+
+    pub fn sd_request_receiver(&self) -> SdRequestChannelReceiver<'_> {
+        self.sd_requests.receiver()
+    }
 }
 
 #[derive(Debug)]
@@ -108,7 +113,7 @@ impl<'a> ContextHandle<'a> {
     pub async fn send_outbound_raw(&self, message: Packet) {
         self.outbound.publish(message).await;
         // TODO: enable this once there's something to consume the requests
-        // self.sd_requests.send(SdRequest::WritePacket(message)).await;
+        self.sd_requests.send(SdRequest::WritePacket(message)).await;
     }
 
     pub async fn send_outbound(

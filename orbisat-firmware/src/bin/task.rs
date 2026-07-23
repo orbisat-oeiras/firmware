@@ -31,6 +31,8 @@ use esp_hal::{
 use esp_hal::{spi::master::Spi, system::Stack};
 #[cfg(feature = "esp32s3")]
 use esp_rtos::embassy::Executor;
+#[cfg(feature = "esp32s3")]
+use orbisat::{channels::SdRequestChannelReceiver, context::ContextHandle};
 use orbisat::{
     channels::{InboundPacketChannel, OutboundPacketChannel, SdRequestChannel},
     comms::{PacketSink, PacketSource},
@@ -44,7 +46,7 @@ use orbisat_components::{
 #[cfg(feature = "esp32s3")]
 use orbisat_components::{
     TimeSyncComponent,
-    sd::{SdCardManager, SdFileWriter, SdTimeSource},
+    sd::{SdCardManager, SdComponent, SdTimeSource},
 };
 #[cfg(feature = "esp32s3")]
 use orbisat_firmware::peripherals::second_core::SecondCorePeripheralManager;
@@ -142,20 +144,32 @@ async fn main(spawner: Spawner) {
             p.take_cpu_control().unwrap(),
             sw_ints.software_interrupt1,
             core1_stack,
-            move || {
+            || {
                 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
                 let executor = EXECUTOR.init(Executor::new());
 
-                executor.run(|spawner| core1_main(spawner, second_core));
+                executor.run(|spawner| {
+                    core1_main(
+                        spawner,
+                        second_core,
+                        ctx.to_handle().expect("should be able to get handle"),
+                        ctx.sd_request_receiver(),
+                    )
+                });
             },
         );
     }
 }
 
 #[cfg(feature = "esp32s3")]
-fn core1_main(_spawner: Spawner, mut p: SecondCorePeripheralManager) {
+fn core1_main(
+    spawner: Spawner,
+    mut p: SecondCorePeripheralManager,
+    ctx: ContextHandle<'static>,
+    receiver: SdRequestChannelReceiver<'static>,
+) {
     // SETUP SD CARD
-    let (bootcount, data_file, timestamps_writer, _audio_writer) = {
+    let (bootcount, data_file, logs_file, _audio_file) = {
         // Spi for SD card
         let spi_dev = ExclusiveDevice::new(
             p.take_spi().unwrap().into_async(),
@@ -177,6 +191,8 @@ fn core1_main(_spawner: Spawner, mut p: SecondCorePeripheralManager) {
                 orbisat_components::sd::SdError::BootcountUnreadable => {
                     panic!("bootcount unreadable")
                 }
+                // SdCardManager::new shouldn't do anything that can result in a CommunicationError
+                orbisat_components::sd::SdError::Communication(_) => unreachable!(),
             },
         });
 
@@ -230,7 +246,7 @@ fn core1_main(_spawner: Spawner, mut p: SecondCorePeripheralManager) {
                 1,
             >,
         > = StaticCell::new();
-        static TIMESTAMPS_FILE: StaticCell<
+        static LOGS_FILE: StaticCell<
             File<
                 '_,
                 SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
@@ -268,23 +284,50 @@ fn core1_main(_spawner: Spawner, mut p: SecondCorePeripheralManager) {
                 .open_file_in_dir("AUDIO", Mode::ReadWriteCreateOrTruncate)
                 .expect("should be able to open audio file"),
         );
-        let timestamps_file = TIMESTAMPS_FILE.init(
+        let logs_file = LOGS_FILE.init(
             boot_dir
                 .open_file_in_dir("TIME", Mode::ReadWriteCreateOrTruncate)
                 .expect("should be able to open audio file"),
         );
 
-        let audio_writer = SdFileWriter::new(audio_file);
-        let timestamps_writer = SdFileWriter::new(timestamps_file);
-
         (
             sd_card_manager.bootcount(),
             data_file,
-            timestamps_writer,
-            audio_writer,
+            logs_file,
+            audio_file,
         )
     };
 
     BOOTCOUNT.store(bootcount, Ordering::Relaxed);
     defmt::info!("Stored global bootcount");
+
+    let sd: SdComponent<
+        'static,
+        'static,
+        ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
+    > = SdComponent::new(receiver, data_file, logs_file);
+
+    #[embassy_executor::task]
+    async fn sd_task(
+        mut c: SdComponent<
+            'static,
+            'static,
+            ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
+        >,
+        mut ctx_handle: ContextHandle<'static>,
+    ) {
+        for _ in 0..orbisat_firmware::RETRY_COUNT {
+            match orbisat::Component::run(&mut c, &mut ctx_handle).await {
+                Ok(_) => {}
+                Err(e) => {
+                    defmt::error!("`run` future for sd failed");
+                    esp_println::println!("error: {:?}", e);
+                }
+            }
+            embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+        }
+        defmt::error!("`run` future for sd failed too many times, giving up");
+    }
+
+    spawner.spawn(sd_task(sd, ctx).expect("task for sd should be spawnable"));
 }

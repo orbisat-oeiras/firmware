@@ -6,7 +6,13 @@ use embedded_sdmmc::{
     BlockDevice, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
 };
 use heapless::{String, format};
-use orbisat::comms::ByteSink;
+use orbipacket::{DeviceId, Packet};
+use orbisat::{
+    Component, Status,
+    channels::SdRequestChannelReceiver,
+    comms::{ByteSink, CommunicationError},
+    sd::SdRequest,
+};
 
 #[derive(Debug)]
 pub struct SdTimeSource;
@@ -32,6 +38,8 @@ pub enum SdError<SPI: SpiDevice<u8>> {
     Sd(embedded_sdmmc::Error<<SdCard<SPI, Delay> as BlockDevice>::Error>),
     #[error("bootcount file cannot be read")]
     BootcountUnreadable,
+    #[error(transparent)]
+    Communication(#[from] orbisat::comms::CommunicationError),
 }
 
 impl<SPI: SpiDevice<u8>> Debug for SdError<SPI> {
@@ -39,6 +47,7 @@ impl<SPI: SpiDevice<u8>> Debug for SdError<SPI> {
         match self {
             Self::Sd(arg0) => f.debug_tuple("Sd").field(arg0).finish(),
             Self::BootcountUnreadable => write!(f, "BootcountUnreadable"),
+            Self::Communication(comm) => write!(f, "{:?}", comm),
         }
     }
 }
@@ -140,6 +149,71 @@ impl<'a, SPI: SpiDevice<u8>> ByteSink for SdFileWriter<'a, SPI> {
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
         self.file.write(buf)?;
         self.file.flush()?;
+
+        Ok(())
+    }
+}
+
+pub struct SdComponent<'a, 'b, SPI: SpiDevice<u8>> {
+    status: Status,
+    requests: SdRequestChannelReceiver<'b>,
+    buf: [u8; Packet::MAX_ENCODE_BUFFER_SIZE],
+    data_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+    logs_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+}
+
+impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
+    pub fn new(
+        requests: SdRequestChannelReceiver<'b>,
+        data_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+        logs_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+    ) -> Self {
+        Self {
+            status: Status::Initialized,
+            requests,
+            buf: [0; _],
+            data_file,
+            logs_file,
+        }
+    }
+}
+
+impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
+    type Error = SdError<SPI>;
+
+    fn id(&self) -> DeviceId {
+        DeviceId::System
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status;
+    }
+
+    async fn run_once(
+        &mut self,
+        _ctx: &mut orbisat::context::ContextHandle<'_>,
+    ) -> Result<(), Self::Error> {
+        while !self.requests.is_empty() {
+            match self.requests.receive().await {
+                SdRequest::WritePacket(packet) => {
+                    self.data_file.write(
+                        packet
+                            .encode(&mut self.buf)
+                            .map_err(CommunicationError::from)?,
+                    )?;
+                }
+                SdRequest::LogMessage(message) => self.logs_file.write(message.as_bytes())?,
+            }
+        }
+
+        // Flush both files only after writing all available messages
+        self.data_file.flush()?;
+        self.logs_file.flush()?;
+        defmt::info!("SdComponent flushed");
 
         Ok(())
     }
