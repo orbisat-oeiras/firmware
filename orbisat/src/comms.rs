@@ -1,10 +1,8 @@
+use crate::channels::{InboundPacketChannelPublisher, OutboundPacketChannelSubscriber};
 use embassy_sync::pubsub::WaitResult;
 use orbipacket::{
     DeviceId, Packet, Payload, Timestamp, TimestampError, TmPacket, decode::DecodeError,
     encode::EncodeError,
-};
-use orbisat_firmware_config::packet_channel::{
-    InboundPacketChannelPublisher, OutboundPacketChannelSubscriber,
 };
 
 use crate::{Component, ContextHandle, Status};

@@ -1,14 +1,14 @@
 use core::{error::Error, fmt::Display};
 
+use crate::channels::{
+    InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
+    OutboundPacketChannelPublisher,
+};
 use embassy_sync::pubsub::{
     WaitResult, publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture,
 };
 use embassy_time::{Delay, Duration, Instant, Ticker};
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TimestampError, TmPacket};
-use orbisat_firmware_config::packet_channel::{
-    InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
-    OutboundPacketChannelPublisher,
-};
 
 #[derive(Debug)]
 pub enum ContextError {

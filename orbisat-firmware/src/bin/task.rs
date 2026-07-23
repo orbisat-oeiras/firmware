@@ -25,20 +25,18 @@ use esp_hal::{
 };
 use esp_rtos::embassy::Executor;
 use orbisat::{
+    channels::{InboundPacketChannel, OutboundPacketChannel},
     comms::{PacketSink, PacketSource},
     context::Context,
 };
-use orbisat_components::sd::SdTimeSource;
-use orbisat_components::secondary::SpeakerComponent;
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource, TimeSyncComponent,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
-    sd::{SdCardManager, SdFileWriter},
+    sd::{SdCardManager, SdFileWriter, SdTimeSource},
+    secondary::SpeakerComponent,
     spatial::Mma8542Component,
 };
-use orbisat_firmware::pwm::PwmController;
-use orbisat_firmware::{components, peripherals::PeripheralManager, sweep};
-use orbisat_firmware_config::packet_channel::{InboundPacketChannel, OutboundPacketChannel};
+use orbisat_firmware::{components, peripherals::PeripheralManager, pwm::PwmController, sweep};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 // This creates a default app-descriptor required by the esp-idf bootloader.

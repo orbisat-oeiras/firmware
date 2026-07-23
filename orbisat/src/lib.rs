@@ -8,6 +8,7 @@ use orbipacket::{DeviceId, Packet, Payload, TcPacket};
 
 use crate::{comms::CommunicationError, context::ContextHandle};
 
+pub mod channels;
 pub mod comms;
 pub mod context;
 pub mod sd;
