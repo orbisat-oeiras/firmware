@@ -1,13 +1,15 @@
 use core::{error::Error, fmt::Display};
 
-use crate::channels::{
-    InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
-    OutboundPacketChannelPublisher,
+use crate::{
+    channels::{
+        InboundPacketChannel, InboundPacketChannelSubscriber, OutboundPacketChannel,
+        OutboundPacketChannelPublisher, SdRequestChannel, SdRequestChannelSender,
+    },
+    sd::SdRequest,
 };
-use embassy_sync::pubsub::{
-    WaitResult, publisher::PublisherWaitFuture, subscriber::SubscriberWaitFuture,
-};
+use embassy_sync::pubsub::{WaitResult, subscriber::SubscriberWaitFuture};
 use embassy_time::{Delay, Duration, Instant, Ticker};
+use heapless::String;
 use orbipacket::{DeviceId, Packet, Payload, Timestamp, TimestampError, TmPacket};
 
 #[derive(Debug)]
@@ -42,6 +44,7 @@ impl From<embassy_sync::pubsub::Error> for ContextError {
 pub struct Context {
     inbound: InboundPacketChannel,
     outbound: OutboundPacketChannel,
+    sd_requests: SdRequestChannel,
     tick_duration: Duration,
     delay: Delay,
 }
@@ -50,12 +53,14 @@ impl Context {
     pub fn new(
         inbound: InboundPacketChannel,
         outbound: OutboundPacketChannel,
+        sd_requests: SdRequestChannel,
         tick_duration: Duration,
         delay: Delay,
     ) -> Self {
         Self {
             inbound,
             outbound,
+            sd_requests,
             tick_duration,
             delay,
         }
@@ -65,6 +70,7 @@ impl Context {
         Ok(ContextHandle {
             inbound: self.inbound.subscriber()?,
             outbound: self.outbound.publisher()?,
+            sd_requests: self.sd_requests.sender(),
             tick: Ticker::every(self.tick_duration),
             delay: self.delay.clone(),
         })
@@ -83,6 +89,7 @@ impl Context {
 pub struct ContextHandle<'a> {
     inbound: InboundPacketChannelSubscriber<'a>,
     outbound: OutboundPacketChannelPublisher<'a>,
+    sd_requests: SdRequestChannelSender<'a>,
     tick: Ticker,
     delay: Delay,
 }
@@ -94,27 +101,32 @@ impl<'a> ContextHandle<'a> {
         self.inbound.next_message()
     }
 
-    pub fn send_outbound_raw<'s>(
-        &'s self,
-        message: Packet,
-    ) -> PublisherWaitFuture<'s, 'a, OutboundPacketChannel, Packet> {
-        self.outbound.publish(message)
+    pub fn receive_inbound_immediate(&mut self) -> Option<WaitResult<Packet>> {
+        self.inbound.try_next_message()
     }
 
-    pub fn send_outbound<'s>(
-        &'s self,
+    pub async fn send_outbound_raw(&self, message: Packet) {
+        self.outbound.publish(message).await;
+        self.sd_requests.send(SdRequest::WritePacket(message)).await;
+    }
+
+    pub async fn send_outbound(
+        &self,
         id: DeviceId,
         payload: Payload,
-    ) -> Result<PublisherWaitFuture<'s, 'a, OutboundPacketChannel, Packet>, TimestampError> {
-        Ok(self.send_outbound_raw(Packet::TmPacket(TmPacket::new(
+    ) -> Result<(), TimestampError> {
+        self.send_outbound_raw(Packet::TmPacket(TmPacket::new(
             id,
             Timestamp::new(Instant::now().as_micros())?,
             payload,
-        ))))
+        )))
+        .await;
+
+        Ok(())
     }
 
-    pub fn receive_inbound_immediate(&mut self) -> Option<WaitResult<Packet>> {
-        self.inbound.try_next_message()
+    pub async fn log(&self, message: String<128>) {
+        self.sd_requests.send(SdRequest::LogMessage(message)).await;
     }
 
     pub fn delay_mut(&mut self) -> &mut Delay {

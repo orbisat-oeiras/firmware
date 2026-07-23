@@ -15,7 +15,7 @@ pub trait Sensor<T: Into<Payload>> {
     ) -> impl Future<Output = Result<(), Self::Error>> {
         async move {
             let reading = self.read(ctx).await?;
-            ctx.send_outbound(id, reading.into())?.await;
+            ctx.send_outbound(id, reading.into()).await?;
             ctx.next_tick().await;
 
             Ok(())

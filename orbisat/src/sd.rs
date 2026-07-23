@@ -2,7 +2,7 @@ use orbipacket::Packet;
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
-pub enum SdRequest<const N: usize> {
+pub enum SdRequest {
     WritePacket(Packet),
-    LogMessage(heapless::String<N>),
+    LogMessage(heapless::String<128>),
 }

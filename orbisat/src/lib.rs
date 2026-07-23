@@ -108,8 +108,8 @@ pub trait Component {
             // Unwraping is safe here because only one byte is provided
             let payload = Payload::from_raw_bytes([self.status() as u8]).unwrap();
             ctx.send_outbound(self.id(), payload)
-                .map_err(CommunicationError::from)?
-                .await;
+                .await
+                .map_err(CommunicationError::from)?;
 
             Ok(())
         }

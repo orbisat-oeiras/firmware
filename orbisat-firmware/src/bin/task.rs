@@ -25,7 +25,7 @@ use esp_hal::{
 };
 use esp_rtos::embassy::Executor;
 use orbisat::{
-    channels::{InboundPacketChannel, OutboundPacketChannel},
+    channels::{InboundPacketChannel, OutboundPacketChannel, SdRequestChannel},
     comms::{PacketSink, PacketSource},
     context::Context,
 };
@@ -200,6 +200,7 @@ async fn main(spawner: Spawner) {
     let ctx = CONTEXT.init(Context::new(
         InboundPacketChannel::new(),
         OutboundPacketChannel::new(),
+        SdRequestChannel::new(),
         Duration::from_millis(500),
         Delay,
     ));

@@ -137,8 +137,8 @@ impl Component for TimeSyncComponent {
         match received_payload.len() {
             2 if received_payload[..2] == *b"BC" => {
                 ctx.send_outbound(DeviceId::TimeSync, Payload::from_u8(self.bootcount))
-                    .map_err(CommunicationError::from)?
-                    .await;
+                    .await
+                    .map_err(CommunicationError::from)?;
 
                 Ok(())
             }
@@ -155,8 +155,8 @@ impl Component for TimeSyncComponent {
                     // Unwrapping is safe because payload is 24 bytes long
                     Payload::from_raw_bytes(payload).unwrap(),
                 )
-                .map_err(CommunicationError::from)?
-                .await;
+                .await
+                .map_err(CommunicationError::from)?;
 
                 Ok(())
             }

@@ -1,5 +1,7 @@
 use orbisat_firmware_config::{CAP, COMPONENT_COUNT, SINK_COUNT};
 
+use crate::sd::SdRequest;
+
 pub type Mutex = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 pub type InboundPacketChannel =
@@ -32,3 +34,7 @@ pub type OutboundPacketChannelPublisher<'a> = embassy_sync::pubsub::Publisher<
     SINK_COUNT,
     COMPONENT_COUNT,
 >;
+
+pub type SdRequestChannel = embassy_sync::channel::Channel<Mutex, SdRequest, 16>;
+pub type SdRequestChannelReceiver<'a> = embassy_sync::channel::Receiver<'a, Mutex, SdRequest, 16>;
+pub type SdRequestChannelSender<'a> = embassy_sync::channel::Sender<'a, Mutex, SdRequest, 16>;
