@@ -32,7 +32,7 @@ use esp_hal::{spi::master::Spi, system::Stack};
 #[cfg(feature = "esp32s3")]
 use esp_rtos::embassy::Executor;
 #[cfg(feature = "esp32s3")]
-use orbisat::{channels::SdRequestChannelReceiver, context::ContextHandle};
+use orbisat::channels::SdRequestChannelReceiver;
 use orbisat::{
     channels::{InboundPacketChannel, OutboundPacketChannel, SdRequestChannel},
     comms::{PacketSink, PacketSource},
@@ -296,40 +296,13 @@ fn core1_main(
     BOOTCOUNT.store(bootcount, Ordering::Relaxed);
     defmt::info!("Stored global bootcount");
 
-    let sd: SdComponent<
-        'static,
-        'static,
-        ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
-    > = SdComponent::new(receiver, data_file, logs_file);
-
-    #[embassy_executor::task]
-    async fn sd_task(
-        mut c: SdComponent<
-            'static,
-            'static,
-            ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
-        >,
-        mut ctx_handle: ContextHandle<'static>,
-    ) {
-        for _ in 0..orbisat_firmware::RETRY_COUNT {
-            match orbisat::Component::run(&mut c, &mut ctx_handle).await {
-                Ok(_) => {}
-                Err(e) => {
-                    defmt::error!("`run` future for sd failed");
-                    esp_println::println!("error: {:?}", e);
-                }
+    components! {
+            (spawner, ctx) {
+                sd: SdComponent<
+                    'static,
+                    'static,
+                    ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
+                > = (receiver, data_file, logs_file);
             }
-            embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
-        }
-        defmt::error!("`run` future for sd failed too many times, giving up");
     }
-
-    spawner.spawn(
-        sd_task(
-            sd,
-            ctx.to_handle()
-                .expect("should be able to get context handle"),
-        )
-        .expect("task for sd should be spawnable"),
-    );
 }
