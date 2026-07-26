@@ -47,10 +47,13 @@ use orbisat_components::{
 use orbisat_components::{
     TimeSyncComponent,
     sd::{SdCardManager, SdComponent, SdTimeSource},
+    secondary::SpeakerComponent,
 };
-#[cfg(feature = "esp32s3")]
-use orbisat_firmware::peripherals::second_core::SecondCorePeripheralManager;
 use orbisat_firmware::{components, peripherals::PeripheralManager};
+#[cfg(feature = "esp32s3")]
+use orbisat_firmware::{
+    peripherals::second_core::SecondCorePeripheralManager, pwm::PwmController, sweep,
+};
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -125,6 +128,13 @@ async fn main(spawner: Spawner) {
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             accelerometer: Mma8542Component<I2c<'static, Blocking>> = (p.take_i2c1().unwrap()).expect("should be able to create Mma8542Component");
             // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
+        }
+    }
+
+    #[cfg(feature = "esp32s3")]
+    components! {
+        (spawner, ctx) {
+            speaker: SpeakerComponent<'static, PwmController<'static>> = (p.take_pwm().unwrap(), &sweep::SWEEP[..]);
         }
     }
 

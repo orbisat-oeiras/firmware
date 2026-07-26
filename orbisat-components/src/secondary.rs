@@ -1,33 +1,18 @@
 use embassy_time::{Duration, Timer};
-use embedded_hal::spi::SpiDevice;
 use orbipacket::{DeviceId, TimestampError};
-use orbisat::{
-    Component, Status,
-    comms::{ByteSink, CommunicationError},
-};
+use orbisat::{Component, Status, comms::CommunicationError};
 
-use crate::sd::{SdError, SdFileWriter};
-
-#[derive(thiserror::Error)]
-pub enum SpeakerError<SPI: SpiDevice<u8>> {
+#[derive(thiserror::Error, Debug)]
+pub enum SpeakerError {
     #[error(transparent)]
     Communication(#[from] CommunicationError),
     #[error(transparent)]
-    Sd(#[from] SdError<SPI>),
+    Format(#[from] core::fmt::Error),
 }
 
-impl<SPI: SpiDevice<u8>> From<TimestampError> for SpeakerError<SPI> {
+impl From<TimestampError> for SpeakerError {
     fn from(value: TimestampError) -> Self {
         Self::Communication(CommunicationError::Timestamp(value))
-    }
-}
-
-impl<SPI: SpiDevice<u8>> core::fmt::Debug for SpeakerError<SPI> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            SpeakerError::Communication(f0) => f.debug_tuple("Communication").field(&f0).finish(),
-            SpeakerError::Sd(sd_error) => f.debug_tuple("Sd").field(&sd_error).finish(),
-        }
     }
 }
 
@@ -39,30 +24,28 @@ pub trait SetFrequency {
 
 type SweepData<'a> = &'a [(u32, u64)];
 
-pub struct SpeakerComponent<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> {
+pub struct SpeakerComponent<'a, PWM: SetFrequency> {
     status: Status,
     pwm: PWM,
     data: SweepData<'a>,
     idx: usize,
     forward_sweep: bool,
-    writer: SdFileWriter<'a, SPI>,
 }
 
-impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> SpeakerComponent<'a, PWM, SPI> {
-    pub fn new(pwm: PWM, data: SweepData<'a>, writer: SdFileWriter<'a, SPI>) -> Self {
+impl<'a, PWM: SetFrequency> SpeakerComponent<'a, PWM> {
+    pub fn new(pwm: PWM, data: SweepData<'a>) -> Self {
         Self {
             status: Status::Initialized,
             pwm,
             data,
             idx: 0,
             forward_sweep: true,
-            writer,
         }
     }
 }
 
-impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'a, PWM, SPI> {
-    type Error = SpeakerError<SPI>;
+impl<'a, PWM: SetFrequency> Component for SpeakerComponent<'a, PWM> {
+    type Error = SpeakerError;
 
     fn id(&self) -> orbipacket::DeviceId {
         DeviceId::Mission1
@@ -107,14 +90,14 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
             self.pwm.set_frequency(self.data[self.idx].0).await;
             Timer::after(Duration::from_micros(self.data[self.idx].1)).await;
 
+            // TODO: The way this is implemented means the timestamp of the
+            // first forward sweep doesn't get logged. That's really not that
+            // big of an issue, but it'd be nice to fix it if possible.
             if self.forward_sweep {
                 if self.idx >= self.data.len() - 1 {
-                    self.writer.sink(b"REVERSE SWEEP TIMESTAMP").await?;
-                    self.writer
-                        .sink(&ctx.timestamp()?.get().to_le_bytes())
-                        .await?;
-                    self.writer.sink(b"\n").await?;
-
+                    ctx.log(
+                        heapless::format!(128; "REVERSE SWEEP TIMESTAMP {}\n", &ctx.timestamp()?.get())?
+                    ).await;
                     defmt::info!("Starting reverse sweep");
 
                     self.forward_sweep = false;
@@ -123,12 +106,9 @@ impl<'a, PWM: SetFrequency, SPI: SpiDevice<u8>> Component for SpeakerComponent<'
                 }
             } else {
                 if self.idx == 0 {
-                    self.writer.sink(b"FORWARD SWEEP TIMESTAMP").await?;
-                    self.writer
-                        .sink(&ctx.timestamp()?.get().to_le_bytes())
-                        .await?;
-                    self.writer.sink(b"\n").await?;
-
+                    ctx.log(
+                        heapless::format!(128; "FORWARD SWEEP TIMESTAMP {}\n", &ctx.timestamp()?.get())?
+                    ).await;
                     defmt::info!("Starting forward sweep");
 
                     self.forward_sweep = true;
