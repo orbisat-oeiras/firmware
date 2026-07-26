@@ -195,8 +195,10 @@ impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
 
     async fn run_once(
         &mut self,
-        _ctx: &mut orbisat::context::ContextHandle<'_>,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
     ) -> Result<(), Self::Error> {
+        let mut messages = 0usize;
+
         while !self.requests.is_empty() {
             match self.requests.receive().await {
                 SdRequest::WritePacket(packet) => {
@@ -208,12 +210,20 @@ impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
                 }
                 SdRequest::LogMessage(message) => self.logs_file.write(message.as_bytes())?,
             }
+
+            messages += 1;
         }
 
         // Flush both files only after writing all available messages
-        self.data_file.flush()?;
-        self.logs_file.flush()?;
-        defmt::info!("SdComponent flushed");
+        // If nothing was written, don't bother flushing
+        if messages > 0 {
+            self.data_file.flush()?;
+            self.logs_file.flush()?;
+            defmt::info!("SdComponent flushed after handling {} messages", messages);
+        }
+
+        // Wait so that messages can queue up
+        ctx.next_tick().await;
 
         Ok(())
     }
