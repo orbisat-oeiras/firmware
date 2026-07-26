@@ -281,7 +281,7 @@ fn core1_main(
         );
         let logs_file = LOGS_FILE.init(
             boot_dir
-                .open_file_in_dir("TIME", Mode::ReadWriteCreateOrTruncate)
+                .open_file_in_dir("LOGS", Mode::ReadWriteCreateOrTruncate)
                 .expect("should be able to open audio file"),
         );
 
