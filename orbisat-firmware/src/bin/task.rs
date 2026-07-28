@@ -148,7 +148,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32s3")]
     {
         // TODO: the size of this stack is completely arbitrary
-        static CORE1_STACK: StaticCell<Stack<8192>> = StaticCell::new();
+        static CORE1_STACK: StaticCell<Stack<32768>> = StaticCell::new();
         let core1_stack = CORE1_STACK.init(Stack::new());
 
         let second_core = p.take_second_core().unwrap();
@@ -322,11 +322,13 @@ fn core1_main(
 
 #[embassy_executor::task]
 async fn tmp(ctx: ContextHandle<'static>) {
-    Timer::after(Duration::from_millis(1000)).await;
-    let wav = WavFile::new(2, 44100, 16, [1; _]);
-    let request = SdRequest::WriteWav(wav);
+    loop {
+        Timer::after(Duration::from_millis(5000)).await;
+        let wav = WavFile::new(2, 44100, 16, [1; _]);
+        let request = SdRequest::WriteWav(wav);
 
-    defmt::warn!("Sending wav request @ {}", Instant::now().as_micros());
-    ctx.sd_request(request).await;
-    defmt::warn!("Finished sending request @ {}", Instant::now().as_micros());
+        defmt::warn!("Sending wav request @ {}", Instant::now().as_micros());
+        ctx.sd_request(request).await;
+        defmt::warn!("Finished sending request @ {}", Instant::now().as_micros());
+    }
 }
