@@ -188,7 +188,10 @@ pub mod second_core {
     use esp_hal::{
         Blocking,
         gpio::{Level, Output, OutputConfig},
-        peripherals::{GPIO10, GPIO11, GPIO12, GPIO13, Peripherals},
+        i2s::master::{Channels, Config, DataFormat, I2s},
+        peripherals::{
+            GPIO10, GPIO11, GPIO12, GPIO13, GPIO18, GPIO36, GPIO37, GPIO39, Peripherals,
+        },
         spi::{
             Mode as SpiMode,
             master::{Config as SpiConfig, Spi},
@@ -196,9 +199,15 @@ pub mod second_core {
         time::Rate,
     };
 
+    pub const SAMPLE_RATE_HZ: u32 = 44100;
+
     pub struct SecondCorePeripheralManager {
         spi: Option<Spi<'static, Blocking>>,
         spi_cs: Option<Output<'static>>,
+        i2s: Option<I2s<'static, Blocking>>,
+        i2s_bclk: Option<GPIO37<'static>>,
+        i2s_ws: Option<GPIO36<'static>>,
+        i2s_din: Option<GPIO18<'static>>,
     }
 
     impl SecondCorePeripheralManager {
@@ -218,9 +227,24 @@ pub mod second_core {
 
             let spi_cs = Output::new(pins.spi_cs, Level::High, OutputConfig::default());
 
+            let i2s = I2s::new(
+                unsafe { p.I2S0.clone_unchecked() },
+                unsafe { p.DMA_CH0.clone_unchecked() },
+                Config::new_tdm_philips()
+                    .with_sample_rate(Rate::from_hz(SAMPLE_RATE_HZ))
+                    .with_data_format(DataFormat::Data16Channel16)
+                    .with_channels(Channels::STEREO),
+            )
+            .expect("should be able to create I2s driver")
+            .with_mclk(pins.i2s_mclk);
+
             Self {
                 spi: Some(spi),
                 spi_cs: Some(spi_cs),
+                i2s: Some(i2s),
+                i2s_bclk: Some(pins.i2s_bclk),
+                i2s_ws: Some(pins.i2s_ws),
+                i2s_din: Some(pins.i2s_din),
             }
         }
 
@@ -231,6 +255,22 @@ pub mod second_core {
         pub const fn take_spi_cs(&mut self) -> Option<Output<'static>> {
             self.spi_cs.take()
         }
+
+        pub const fn take_i2s(&mut self) -> Option<I2s<'static, Blocking>> {
+            self.i2s.take()
+        }
+
+        pub const fn take_i2s_bclk(&mut self) -> Option<GPIO37<'static>> {
+            self.i2s_bclk.take()
+        }
+
+        pub const fn take_i2s_ws(&mut self) -> Option<GPIO36<'static>> {
+            self.i2s_ws.take()
+        }
+
+        pub const fn take_i2s_din(&mut self) -> Option<GPIO18<'static>> {
+            self.i2s_din.take()
+        }
     }
 
     struct PinSet {
@@ -238,6 +278,10 @@ pub mod second_core {
         spi_miso: GPIO13<'static>,
         spi_mosi: GPIO11<'static>,
         spi_cs: GPIO10<'static>,
+        i2s_mclk: GPIO39<'static>,
+        i2s_bclk: GPIO37<'static>,
+        i2s_ws: GPIO36<'static>,
+        i2s_din: GPIO18<'static>,
     }
 
     impl PinSet {
@@ -250,6 +294,10 @@ pub mod second_core {
                     spi_miso: p.GPIO13.clone_unchecked(),
                     spi_mosi: p.GPIO11.clone_unchecked(),
                     spi_cs: p.GPIO10.clone_unchecked(),
+                    i2s_mclk: p.GPIO39.clone_unchecked(),
+                    i2s_bclk: p.GPIO37.clone_unchecked(),
+                    i2s_ws: p.GPIO36.clone_unchecked(),
+                    i2s_din: p.GPIO18.clone_unchecked(),
                 }
             }
         }
