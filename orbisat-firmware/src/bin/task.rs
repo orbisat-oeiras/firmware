@@ -14,7 +14,7 @@ use core::sync::atomic::Ordering;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::{Delay, Duration, Instant, Timer};
+use embassy_time::{Delay, Duration};
 #[cfg(feature = "esp32s3")]
 use embedded_hal_bus::spi::ExclusiveDevice;
 #[cfg(feature = "esp32s3")]
@@ -36,8 +36,7 @@ use orbisat::channels::SdRequestChannelReceiver;
 use orbisat::{
     channels::{InboundPacketChannel, OutboundPacketChannel, SdRequestChannel},
     comms::{PacketSink, PacketSource},
-    context::{Context, ContextHandle},
-    sd::{SdRequest, WavFile},
+    context::Context,
 };
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource,
@@ -140,8 +139,6 @@ async fn main(spawner: Spawner) {
     }
 
     info!("Components initialized");
-
-    Timer::after(Duration::from_millis(1000)).await;
 
     // START SECOND CORE
 
@@ -315,20 +312,5 @@ fn core1_main(
                     ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
                 > = (receiver, data_file, logs_file, audio_dir);
             }
-    }
-
-    spawner.spawn(tmp(ctx.to_handle().unwrap()).unwrap());
-}
-
-#[embassy_executor::task]
-async fn tmp(ctx: ContextHandle<'static>) {
-    loop {
-        Timer::after(Duration::from_millis(5000)).await;
-        let wav = WavFile::new(2, 44100, 16, [1; _]);
-        let request = SdRequest::WriteWav(wav);
-
-        defmt::warn!("Sending wav request @ {}", Instant::now().as_micros());
-        ctx.sd_request(request).await;
-        defmt::warn!("Finished sending request @ {}", Instant::now().as_micros());
     }
 }
