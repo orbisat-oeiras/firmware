@@ -216,7 +216,7 @@ impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
                 SdRequest::LogMessage(message) => self.logs_file.write(message.as_bytes())?,
                 SdRequest::WriteWav(wav) => {
                     // Unwrapping is safe here because a u16 can always be formatted to 4 characters in hex
-                    let fname = heapless::format!(4; "{:04X}", self.wav_num).unwrap();
+                    let fname = heapless::format!(8; "{:04X}.wav", self.wav_num).unwrap();
                     let file = self
                         .wav_dir
                         .open_file_in_dir(fname.as_str(), Mode::ReadWriteCreateOrTruncate)?;
@@ -229,6 +229,8 @@ impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
                     defmt::warn!("Writing wav to sd @ {}", Instant::now().as_micros());
                     file.write(&buf[..size])?;
                     defmt::warn!("Finished writing @ {}", Instant::now().as_micros());
+
+                    self.wav_num += 1;
                 }
             }
 
