@@ -25,7 +25,7 @@ impl ByteSink for ConsoleByteSink {
     type Error = Infallible;
 
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        defmt::info!("Outbound packet: {:02X}", buf);
+        // defmt::info!("Outbound packet: {:02X}", buf);
         Ok(())
     }
 }
@@ -51,7 +51,7 @@ where
     type Error = W::Error;
 
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        defmt::info!("Uart sending");
+        // defmt::info!("Uart sending");
         self.0.write_all(buf).await?;
         self.0.flush().await?;
         Ok(())
