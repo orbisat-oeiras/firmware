@@ -144,6 +144,10 @@ impl<'a> ContextHandle<'a> {
         self.sd_requests.send(SdRequest::LogMessage(message)).await;
     }
 
+    pub async fn sd_request(&self, request: SdRequest) {
+        self.sd_requests.send(request).await;
+    }
+
     pub fn delay_mut(&mut self) -> &mut Delay {
         &mut self.delay
     }
