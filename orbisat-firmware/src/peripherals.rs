@@ -208,7 +208,7 @@ pub mod second_core {
             let spi = Spi::new(
                 unsafe { p.SPI2.clone_unchecked() },
                 SpiConfig::default()
-                    .with_frequency(Rate::from_khz(400))
+                    .with_frequency(Rate::from_mhz(40))
                     .with_mode(SpiMode::_0),
             )
             .expect("should be able to construct Spi")
