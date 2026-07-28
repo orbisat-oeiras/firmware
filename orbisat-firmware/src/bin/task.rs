@@ -14,7 +14,7 @@ use core::sync::atomic::Ordering;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::{Delay, Duration};
+use embassy_time::{Delay, Duration, Instant, Timer};
 #[cfg(feature = "esp32s3")]
 use embedded_hal_bus::spi::ExclusiveDevice;
 #[cfg(feature = "esp32s3")]
@@ -36,7 +36,8 @@ use orbisat::channels::SdRequestChannelReceiver;
 use orbisat::{
     channels::{InboundPacketChannel, OutboundPacketChannel, SdRequestChannel},
     comms::{PacketSink, PacketSource},
-    context::Context,
+    context::{Context, ContextHandle},
+    sd::{SdRequest, WavFile},
 };
 use orbisat_components::{
     ConsoleByteSink, SerialByteSink, SerialByteSource,
@@ -140,6 +141,8 @@ async fn main(spawner: Spawner) {
 
     info!("Components initialized");
 
+    Timer::after(Duration::from_millis(1000)).await;
+
     // START SECOND CORE
 
     #[cfg(feature = "esp32s3")]
@@ -174,7 +177,7 @@ fn core1_main(
     receiver: SdRequestChannelReceiver<'static>,
 ) {
     // SETUP SD CARD
-    let (bootcount, data_file, logs_file, _audio_file) = {
+    let (bootcount, data_file, logs_file, audio_dir) = {
         // Spi for SD card
         let spi_dev = ExclusiveDevice::new(
             p.take_spi().unwrap().into_async(),
@@ -241,8 +244,8 @@ fn core1_main(
                 1,
             >,
         > = StaticCell::new();
-        static AUDIO_FILE: StaticCell<
-            File<
+        static AUDIO_DIR: StaticCell<
+            Directory<
                 '_,
                 SdCard<ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>, Delay>,
                 SdTimeSource,
@@ -284,10 +287,13 @@ fn core1_main(
                 .open_file_in_dir("DATA", Mode::ReadWriteCreateOrTruncate)
                 .expect("should be able to open data file"),
         );
-        let audio_file = AUDIO_FILE.init(
+        boot_dir
+            .make_dir_in_dir("AUDIO")
+            .expect("should be able to create audio dir");
+        let audio_dir = AUDIO_DIR.init(
             boot_dir
-                .open_file_in_dir("AUDIO", Mode::ReadWriteCreateOrTruncate)
-                .expect("should be able to open audio file"),
+                .open_dir("AUDIO")
+                .expect("should be able to open audio dir"),
         );
         let logs_file = LOGS_FILE.init(
             boot_dir
@@ -295,12 +301,7 @@ fn core1_main(
                 .expect("should be able to open audio file"),
         );
 
-        (
-            sd_card_manager.bootcount(),
-            data_file,
-            logs_file,
-            audio_file,
-        )
+        (sd_card_manager.bootcount(), data_file, logs_file, audio_dir)
     };
 
     BOOTCOUNT.store(bootcount, Ordering::Relaxed);
@@ -312,7 +313,20 @@ fn core1_main(
                     'static,
                     'static,
                     ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
-                > = (receiver, data_file, logs_file);
+                > = (receiver, data_file, logs_file, audio_dir);
             }
     }
+
+    spawner.spawn(tmp(ctx.to_handle().unwrap()).unwrap());
+}
+
+#[embassy_executor::task]
+async fn tmp(ctx: ContextHandle<'static>) {
+    Timer::after(Duration::from_millis(1000)).await;
+    let wav = WavFile::new(2, 44100, 16, [1; _]);
+    let request = SdRequest::WriteWav(wav);
+
+    defmt::warn!("Sending wav request @ {}", Instant::now().as_micros());
+    ctx.sd_request(request).await;
+    defmt::warn!("Finished sending request @ {}", Instant::now().as_micros());
 }
