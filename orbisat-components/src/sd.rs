@@ -209,6 +209,7 @@ impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
                     )?;
                 }
                 SdRequest::LogMessage(message) => self.logs_file.write(message.as_bytes())?,
+                SdRequest::WriteWav(_) => todo!(),
             }
 
             messages += 1;
