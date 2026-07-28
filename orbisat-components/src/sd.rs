@@ -3,7 +3,7 @@ use core::fmt::Debug;
 use embassy_time::{Delay, Instant};
 use embedded_hal::spi::SpiDevice;
 use embedded_sdmmc::{
-    BlockDevice, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
+    BlockDevice, Directory, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
 };
 use heapless::{String, format};
 use orbipacket::{DeviceId, Packet};
@@ -160,6 +160,8 @@ pub struct SdComponent<'a, 'b, SPI: SpiDevice<u8>> {
     buf: [u8; Packet::MAX_ENCODE_BUFFER_SIZE],
     data_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
     logs_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+    wav_dir: &'a Directory<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+    wav_num: u16,
 }
 
 impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
@@ -167,6 +169,7 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
         requests: SdRequestChannelReceiver<'b>,
         data_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
         logs_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+        wav_dir: &'a Directory<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
     ) -> Self {
         Self {
             status: Status::Initialized,
@@ -174,6 +177,8 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
             buf: [0; _],
             data_file,
             logs_file,
+            wav_dir,
+            wav_num: 0,
         }
     }
 }
@@ -209,7 +214,22 @@ impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
                     )?;
                 }
                 SdRequest::LogMessage(message) => self.logs_file.write(message.as_bytes())?,
-                SdRequest::WriteWav(_) => todo!(),
+                SdRequest::WriteWav(wav) => {
+                    // Unwrapping is safe here because a u16 can always be formatted to 4 characters in hex
+                    let fname = heapless::format!(4; "{:04X}", self.wav_num).unwrap();
+                    let file = self
+                        .wav_dir
+                        .open_file_in_dir(fname.as_str(), Mode::ReadWriteCreateOrTruncate)?;
+
+                    // TODO: don't hardcode buffer size
+                    let mut buf = [0u8; 8192 + 44];
+                    // Unwrapping is safe beccause the buffer is large enough
+                    let size = wav.to_bytes(&mut buf).unwrap();
+
+                    defmt::warn!("Writing wav to sd @ {}", Instant::now().as_micros());
+                    file.write(&buf[..size])?;
+                    defmt::warn!("Finished writing @ {}", Instant::now().as_micros());
+                }
             }
 
             messages += 1;
