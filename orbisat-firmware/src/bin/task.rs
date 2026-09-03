@@ -19,14 +19,14 @@ use embassy_time::{Delay, Duration};
 use embedded_hal_bus::spi::ExclusiveDevice;
 #[cfg(feature = "esp32s3")]
 use embedded_sdmmc::{Directory, File, Mode, SdCard, Volume, VolumeIdx};
-#[cfg(feature = "esp32s3")]
-use esp_hal::gpio::Output;
 use esp_hal::{
     Async, Blocking,
     clock::CpuClock,
     i2c::master::I2c,
     uart::{UartRx, UartTx},
 };
+#[cfg(feature = "esp32s3")]
+use esp_hal::{dma_buffers, gpio::Output};
 #[cfg(feature = "esp32s3")]
 use esp_hal::{spi::master::Spi, system::Stack};
 #[cfg(feature = "esp32s3")]
@@ -52,7 +52,8 @@ use orbisat_components::{
 use orbisat_firmware::{components, peripherals::PeripheralManager};
 #[cfg(feature = "esp32s3")]
 use orbisat_firmware::{
-    peripherals::second_core::SecondCorePeripheralManager, pwm::PwmController, sweep,
+    i2s::MicComponent, peripherals::second_core::SecondCorePeripheralManager, pwm::PwmController,
+    sweep,
 };
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
@@ -145,7 +146,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32s3")]
     {
         // TODO: the size of this stack is completely arbitrary
-        static CORE1_STACK: StaticCell<Stack<32768>> = StaticCell::new();
+        static CORE1_STACK: StaticCell<Stack<65536>> = StaticCell::new();
         let core1_stack = CORE1_STACK.init(Stack::new());
 
         let second_core = p.take_second_core().unwrap();
@@ -304,6 +305,16 @@ fn core1_main(
     BOOTCOUNT.store(bootcount, Ordering::Relaxed);
     defmt::info!("Stored global bootcount");
 
+    let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(4096, 0);
+
+    let i2s = p.take_i2s().unwrap().into_async();
+    let i2s_rx = i2s
+        .i2s_rx
+        .with_bclk(p.take_i2s_bclk().unwrap())
+        .with_ws(p.take_i2s_ws().unwrap())
+        .with_din(p.take_i2s_din().unwrap())
+        .build(rx_descriptors);
+
     components! {
             (spawner, ctx) {
                 sd: SdComponent<
@@ -311,6 +322,7 @@ fn core1_main(
                     'static,
                     ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
                 > = (receiver, data_file, logs_file, audio_dir);
+                mic: MicComponent<'static> = (i2s_rx, rx_buffer);
             }
     }
 }
