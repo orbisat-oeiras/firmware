@@ -1,5 +1,3 @@
-#[cfg(feature = "esp32s3")]
-use esp_hal::peripherals::{GPIO1, GPIO2, GPIO3, GPIO5, GPIO8, GPIO9, GPIO21, GPIO34, GPIO42};
 #[cfg(feature = "esp32")]
 use esp_hal::peripherals::{GPIO3, GPIO5, GPIO16, GPIO17, GPIO18, GPIO19, GPIO21, GPIO22, GPIO33};
 use esp_hal::{
@@ -10,6 +8,11 @@ use esp_hal::{
     peripherals::{CPU_CTRL, Peripherals, TIMG0},
     timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart},
+};
+#[cfg(feature = "esp32s3")]
+use esp_hal::{
+    peripherals::{GPIO1, GPIO2, GPIO3, GPIO5, GPIO8, GPIO9, GPIO21, GPIO34, GPIO42},
+    psram::Psram,
 };
 
 #[cfg(feature = "esp32s3")]
@@ -27,6 +30,8 @@ pub struct PeripheralManager {
     cpu_control: Option<CPU_CTRL<'static>>,
     #[cfg(feature = "esp32s3")]
     second_core: Option<SecondCorePeripheralManager>,
+    #[cfg(feature = "esp32s3")]
+    psram: Option<Psram>,
 }
 
 impl PeripheralManager {
@@ -55,7 +60,7 @@ impl PeripheralManager {
             .into_async();
 
         let i2c1 = I2c::new(p.I2C1, I2cConfig::default())
-            .expect("should be able to construc I2c1")
+            .expect("should be able to construct I2c1")
             .with_scl(pins.i2c1_scl)
             .with_sda(pins.i2c1_sda);
 
@@ -76,6 +81,8 @@ impl PeripheralManager {
             cpu_control: Some(p.CPU_CTRL),
             #[cfg(feature = "esp32s3")]
             second_core: Some(second_core),
+            #[cfg(feature = "esp32s3")]
+            psram: Some(Psram::new(p.PSRAM, Default::default())),
         }
     }
 
@@ -114,6 +121,11 @@ impl PeripheralManager {
     #[cfg(feature = "esp32s3")]
     pub const fn take_second_core(&mut self) -> Option<SecondCorePeripheralManager> {
         self.second_core.take()
+    }
+
+    #[cfg(feature = "esp32s3")]
+    pub const fn take_psram(&mut self) -> Option<Psram> {
+        self.psram.take()
     }
 }
 

@@ -7,9 +7,9 @@
 )]
 #![allow(clippy::type_complexity)]
 
-use core::sync::atomic::AtomicU8;
 #[cfg(feature = "esp32s3")]
 use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU8, AtomicUsize};
 
 use defmt::info;
 use embassy_executor::Spawner;
@@ -19,14 +19,14 @@ use embassy_time::{Delay, Duration};
 use embedded_hal_bus::spi::ExclusiveDevice;
 #[cfg(feature = "esp32s3")]
 use embedded_sdmmc::{Directory, File, Mode, SdCard, Volume, VolumeIdx};
-#[cfg(feature = "esp32s3")]
-use esp_hal::gpio::Output;
 use esp_hal::{
     Async, Blocking,
     clock::CpuClock,
     i2c::master::I2c,
     uart::{UartRx, UartTx},
 };
+#[cfg(feature = "esp32s3")]
+use esp_hal::{dma_descriptors, gpio::Output, psram::Psram};
 #[cfg(feature = "esp32s3")]
 use esp_hal::{spi::master::Spi, system::Stack};
 #[cfg(feature = "esp32s3")]
@@ -52,7 +52,8 @@ use orbisat_components::{
 use orbisat_firmware::{components, peripherals::PeripheralManager};
 #[cfg(feature = "esp32s3")]
 use orbisat_firmware::{
-    peripherals::second_core::SecondCorePeripheralManager, pwm::PwmController, sweep,
+    i2s::MicComponent, peripherals::second_core::SecondCorePeripheralManager, pwm::PwmController,
+    sweep,
 };
 use static_cell::StaticCell;
 use {esp_backtrace as _, esp_println as _};
@@ -61,6 +62,7 @@ use {esp_backtrace as _, esp_println as _};
 esp_bootloader_esp_idf::esp_app_desc!();
 
 static BOOTCOUNT: AtomicU8 = AtomicU8::new(0);
+static PSRAM_OFFSET: AtomicUsize = AtomicUsize::new(0);
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
@@ -73,6 +75,10 @@ async fn main(spawner: Spawner) {
 
     // GET PERIPHERALS
     let mut p = PeripheralManager::new(peripherals);
+    #[cfg(feature = "esp32s3")]
+    let psram = p.take_psram().unwrap();
+    #[cfg(not(feature = "esp32s3"))]
+    let psram = ();
 
     // START THE SCHEDULER
     let timg0 = p.take_timg0().unwrap();
@@ -82,14 +88,17 @@ async fn main(spawner: Spawner) {
     info!("Embassy initialized!");
 
     // CREATE CONTEXT
-    static CONTEXT: StaticCell<Context> = StaticCell::new();
-    let ctx = CONTEXT.init(Context::new(
-        InboundPacketChannel::new(),
-        OutboundPacketChannel::new(),
-        SdRequestChannel::new(),
-        Duration::from_millis(500),
-        Delay,
-    ));
+    let ctx = &*unsafe {
+        psram_allocate(&psram, || {
+            Context::new(
+                InboundPacketChannel::new(),
+                OutboundPacketChannel::new(),
+                SdRequestChannel::new(),
+                Duration::from_millis(500),
+                Delay,
+            )
+        })
+    };
 
     // SPLIT RADIO UART
     let (uart0_rx, uart0_tx) = p.take_uart0().unwrap().split();
@@ -144,7 +153,9 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "esp32s3")]
     {
-        // TODO: the size of this stack is completely arbitrary
+        let mic_scratch = unsafe { psram_allocate(&psram, || [0u8; 1024]) };
+        let dma_buffer = unsafe { psram_allocate(&psram, || [0u8; 4096]) };
+
         static CORE1_STACK: StaticCell<Stack<32768>> = StaticCell::new();
         let core1_stack = CORE1_STACK.init(Stack::new());
 
@@ -154,12 +165,19 @@ async fn main(spawner: Spawner) {
             p.take_cpu_control().unwrap(),
             sw_ints.software_interrupt1,
             core1_stack,
-            || {
+            move || {
                 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
                 let executor = EXECUTOR.init(Executor::new());
 
                 executor.run(|spawner| {
-                    core1_main(spawner, second_core, &*ctx, ctx.sd_request_receiver())
+                    core1_main(
+                        spawner,
+                        second_core,
+                        ctx,
+                        ctx.sd_request_receiver(),
+                        mic_scratch,
+                        dma_buffer,
+                    )
                 });
             },
         );
@@ -172,6 +190,8 @@ fn core1_main(
     mut p: SecondCorePeripheralManager,
     ctx: &'static Context,
     receiver: SdRequestChannelReceiver<'static>,
+    mic_scratch: &'static mut [u8; 1024],
+    dma_buffer: &'static mut [u8; 4096],
 ) {
     // SETUP SD CARD
     let (bootcount, data_file, logs_file, audio_dir) = {
@@ -304,6 +324,16 @@ fn core1_main(
     BOOTCOUNT.store(bootcount, Ordering::Relaxed);
     defmt::info!("Stored global bootcount");
 
+    let rx_descriptors = dma_descriptors!(4096, 0).0;
+
+    let i2s = p.take_i2s().unwrap().into_async();
+    let i2s_rx = i2s
+        .i2s_rx
+        .with_bclk(p.take_i2s_bclk().unwrap())
+        .with_ws(p.take_i2s_ws().unwrap())
+        .with_din(p.take_i2s_din().unwrap())
+        .build(rx_descriptors);
+
     components! {
             (spawner, ctx) {
                 sd: SdComponent<
@@ -311,6 +341,36 @@ fn core1_main(
                     'static,
                     ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
                 > = (receiver, data_file, logs_file, audio_dir);
+                mic: MicComponent<'static> = (i2s_rx, dma_buffer, mic_scratch);
             }
     }
+}
+
+#[cfg(feature = "esp32s3")]
+unsafe fn psram_allocate<T>(psram: &Psram, f: impl FnOnce() -> T) -> &'static mut T {
+    let (base, size) = psram.raw_parts();
+    let base = unsafe { base.add(PSRAM_OFFSET.load(Ordering::Relaxed)) };
+
+    // info!(
+    //     "{} >= {} + {} = {}",
+    //     size,
+    //     PSRAM_OFFSET.load(Ordering::Relaxed),
+    //     size_of::<T>(),
+    //     PSRAM_OFFSET.load(Ordering::Relaxed) + size_of::<T>()
+    // );
+    assert!(size >= PSRAM_OFFSET.load(Ordering::Relaxed) + size_of::<T>());
+    assert!((base as usize).is_multiple_of(32));
+
+    PSRAM_OFFSET.fetch_add(size_of::<T>().next_multiple_of(32), Ordering::Relaxed);
+
+    unsafe {
+        base.cast::<T>().write(f());
+        &mut *base.cast::<T>()
+    }
+}
+
+#[cfg(not(feature = "esp32s3"))]
+unsafe fn psram_allocate<T>(_: (), f: impl FnOnce() -> T) -> &'static T {
+    static STATIC_CELL: StaticCell<T> = StaticCell::new();
+    STATIC_CELL.init(f())
 }
