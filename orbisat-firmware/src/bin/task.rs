@@ -119,10 +119,10 @@ async fn main(spawner: Spawner) {
     // SPAWN COMPONENT TASKS
     components! {
         (spawner, ctx) {
-            console_sink: PacketSink<ConsoleByteSink> = (
-                ctx.outbound().subscriber().expect("outbound should be subscribable"),
-                ConsoleByteSink,
-            );
+            // console_sink: PacketSink<ConsoleByteSink> = (
+            //     ctx.outbound().subscriber().expect("outbound should be subscribable"),
+            //     ConsoleByteSink,
+            // );
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SerialByteSink::new(uart0_tx),

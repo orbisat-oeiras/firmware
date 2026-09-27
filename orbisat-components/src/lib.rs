@@ -25,7 +25,7 @@ impl ByteSink for ConsoleByteSink {
     type Error = Infallible;
 
     async fn sink(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        // defmt::info!("Outbound packet: {:02X}", buf);
+        defmt::info!("Outbound packet: {:02X}", buf);
         Ok(())
     }
 }
