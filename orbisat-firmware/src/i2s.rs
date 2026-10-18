@@ -161,7 +161,7 @@ impl<'a> Component for MicComponent<'a> {
                 }
 
                 // Convert 24-bit to 16-bit PCM (/ 256) with +18 dB gain (* 8): scale = 8 / 256 = 1 / 32
-                let v = y * (8.0f32 / 256.0f32);
+                let v = y * (2.0f32 / 256.0f32);
                 let sample16 = if v > 32767.0f32 {
                     32767i16
                 } else if v < -32768.0f32 {
@@ -196,10 +196,10 @@ impl<'a> Component for MicComponent<'a> {
                         .commit(AUDIO_FRAME_SIZE as u16);
                     self.idx = 0;
                     self.frames_committed = self.frames_committed.wrapping_add(1);
-                    if self.frames_committed % 4 == 0 {
-                        defmt::info!("Mic Audio: ACTIVE (peak={}/32767)", self.current_peak);
-                        self.current_peak = 0;
-                    }
+                    // if self.frames_committed % 4 == 0 {
+                    //     defmt::info!("Mic Audio: ACTIVE (peak={}/32767)", self.current_peak);
+                    //     self.current_peak = 0;
+                    // }
                 }
             }
 
