@@ -203,11 +203,12 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
                 let file = self
                     .wav_dir
                     .open_file_in_dir(fname.as_str(), Mode::ReadWriteCreateOrTruncate)?;
+                let expected_data_size = u32::from(WAV_FRAMES_PER_FILE) * AUDIO_FRAME_SIZE as u32;
                 file.write(&orbisat::sd::wav_header(
                     1,
                     orbisat::sd::SAMPLE_RATE_HZ,
                     16,
-                    0,
+                    expected_data_size,
                 ))?;
                 self.audio_file = Some(file);
             }
@@ -219,15 +220,6 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
             }
 
             let next_frame_count = self.audio_frames + 1;
-            let data_size = u32::from(next_frame_count) * AUDIO_FRAME_SIZE as u32;
-            file.seek_from_start(0)?;
-            file.write(&orbisat::sd::wav_header(
-                1,
-                orbisat::sd::SAMPLE_RATE_HZ,
-                16,
-                data_size,
-            ))?;
-            file.seek_from_end(0)?;
             file.flush()?;
 
             Ok::<u8, SdError<SPI>>(next_frame_count)

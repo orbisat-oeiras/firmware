@@ -67,7 +67,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 static BOOTCOUNT: AtomicU8 = AtomicU8::new(0);
 static PSRAM_OFFSET: AtomicUsize = AtomicUsize::new(0);
 
-const DMA_BUFFER_SIZE: usize = 4096;
+const DMA_BUFFER_SIZE: usize = 32768;
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
