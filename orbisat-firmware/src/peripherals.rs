@@ -3,9 +3,8 @@ use esp_hal::peripherals::{GPIO3, GPIO5, GPIO16, GPIO17, GPIO18, GPIO19, GPIO21,
 use esp_hal::{
     Async, Blocking,
     i2c::master::{Config as I2cConfig, I2c},
-    interrupt::software::SoftwareInterruptControl,
     ledc::timer::config::Duty,
-    peripherals::{CPU_CTRL, Peripherals, TIMG0},
+    peripherals::{CPU_CTRL, FROM_CPU_INTR0, FROM_CPU_INTR1, Peripherals, TIMG0},
     timer::timg::TimerGroup,
     uart::{Config as UartConfig, Uart},
 };
@@ -26,12 +25,17 @@ pub struct PeripheralManager {
     i2c1: Option<I2c<'static, Blocking>>,
     pwm: Option<PwmController<'static>>,
     timg0: Option<TimerGroup<'static, TIMG0<'static>>>,
-    software_interrupts: Option<SoftwareInterruptControl<'static>>,
+    software_interrupts: Option<SoftwareInterrupts>,
     cpu_control: Option<CPU_CTRL<'static>>,
     #[cfg(feature = "esp32s3")]
     second_core: Option<SecondCorePeripheralManager>,
     #[cfg(feature = "esp32s3")]
     psram: Option<Psram>,
+}
+
+pub struct SoftwareInterrupts {
+    pub software_interrupt0: FROM_CPU_INTR0<'static>,
+    pub software_interrupt1: FROM_CPU_INTR1<'static>,
 }
 
 impl PeripheralManager {
@@ -68,7 +72,10 @@ impl PeripheralManager {
 
         let timg0 = TimerGroup::new(p.TIMG0);
 
-        let software_interrupts = SoftwareInterruptControl::new(p.SW_INTERRUPT);
+        let software_interrupts = SoftwareInterrupts {
+            software_interrupt0: p.FROM_CPU_INTR0,
+            software_interrupt1: p.FROM_CPU_INTR1,
+        };
 
         Self {
             uart0: Some(uart0),
@@ -110,7 +117,7 @@ impl PeripheralManager {
         self.timg0.take()
     }
 
-    pub const fn take_software_interrupts(&mut self) -> Option<SoftwareInterruptControl<'static>> {
+    pub const fn take_software_interrupts(&mut self) -> Option<SoftwareInterrupts> {
         self.software_interrupts.take()
     }
 
@@ -200,7 +207,7 @@ pub mod second_core {
     use esp_hal::{
         Blocking,
         gpio::{Level, Output, OutputConfig},
-        i2s::master::{Channels, Config, DataFormat, I2s},
+        i2s::master::{Channels, DataFormat, I2s, TdmConfig},
         peripherals::{
             GPIO10, GPIO11, GPIO12, GPIO13, GPIO18, GPIO36, GPIO37, GPIO39, Peripherals,
         },
@@ -242,9 +249,9 @@ pub mod second_core {
             let i2s = I2s::new(
                 unsafe { p.I2S0.clone_unchecked() },
                 unsafe { p.DMA_CH0.clone_unchecked() },
-                Config::new_tdm_philips()
+                TdmConfig::new_tdm_philips()
                     .with_sample_rate(Rate::from_hz(SAMPLE_RATE_HZ))
-                    .with_data_format(DataFormat::Data16Channel16)
+                    .with_data_format(DataFormat::Data32Channel24)
                     .with_channels(Channels::STEREO),
             )
             .expect("should be able to create I2s driver")

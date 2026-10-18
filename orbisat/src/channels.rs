@@ -35,6 +35,6 @@ pub type OutboundPacketChannelPublisher<'a> = embassy_sync::pubsub::Publisher<
     COMPONENT_COUNT,
 >;
 
-pub type SdRequestChannel = embassy_sync::channel::Channel<Mutex, SdRequest, 16>;
-pub type SdRequestChannelReceiver<'a> = embassy_sync::channel::Receiver<'a, Mutex, SdRequest, 16>;
-pub type SdRequestChannelSender<'a> = embassy_sync::channel::Sender<'a, Mutex, SdRequest, 16>;
+pub type SdRequestChannel = embassy_sync::channel::Channel<Mutex, SdRequest, 64>;
+pub type SdRequestChannelReceiver<'a> = embassy_sync::channel::Receiver<'a, Mutex, SdRequest, 64>;
+pub type SdRequestChannelSender<'a> = embassy_sync::channel::Sender<'a, Mutex, SdRequest, 64>;

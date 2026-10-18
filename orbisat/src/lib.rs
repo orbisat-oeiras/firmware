@@ -4,6 +4,7 @@
 use core::fmt::Display;
 
 use embassy_sync::pubsub::WaitResult;
+use embassy_time::{Duration, Timer};
 use orbipacket::{DeviceId, Packet, Payload, TcPacket};
 
 use crate::{comms::CommunicationError, context::ContextHandle};
@@ -51,6 +52,8 @@ pub trait Component {
     ) -> impl Future<Output = Result<(), Self::Error>> {
         async {
             defmt::info!("Component {} started running", self.id());
+            ctx.log(heapless::format!("Component {} started running\n", self.id()).unwrap())
+                .await;
             self.set_status(Status::Running);
 
             loop {
@@ -106,7 +109,7 @@ pub trait Component {
     fn status_report(&self, ctx: &ContextHandle) -> impl Future<Output = Result<(), Self::Error>> {
         async {
             // Unwraping is safe here because only one byte is provided
-            let payload = Payload::from_raw_bytes([self.status() as u8]).unwrap();
+            let payload = Payload::from_u32(self.status() as u32);
             ctx.send_outbound(self.id(), payload)
                 .await
                 .map_err(CommunicationError::from)?;

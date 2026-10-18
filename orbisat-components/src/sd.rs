@@ -1,18 +1,22 @@
 use core::fmt::Debug;
 
-use embassy_time::{Delay, Instant};
+use crate::audio_stream::{AUDIO_FRAME_SIZE, AudioConsumer, AudioReadGrant};
+use embassy_time::{Delay, Duration, Instant, Timer};
 use embedded_hal::spi::SpiDevice;
 use embedded_sdmmc::{
     BlockDevice, Directory, File, Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager,
 };
 use heapless::{String, format};
-use orbipacket::{DeviceId, Packet};
+use orbipacket::{DeviceId, Packet, Payload};
 use orbisat::{
     Component, Status,
     channels::SdRequestChannelReceiver,
     comms::{ByteSink, CommunicationError},
     sd::SdRequest,
 };
+
+const AUDIO_SD_WRITE_CHUNK_SIZE: usize = 512;
+const WAV_FRAMES_PER_FILE: u8 = 65;
 
 #[derive(Debug)]
 pub struct SdTimeSource;
@@ -69,7 +73,6 @@ pub struct SdCardManager<SPI: SpiDevice<u8>> {
 impl<SPI: SpiDevice<u8>> SdCardManager<SPI> {
     pub fn new(spi: SPI) -> Result<Self, SdError<SPI>> {
         let sd_card = SdCard::new(spi, Delay);
-
         defmt::info!("SD card size is {} bytes", sd_card.num_bytes());
 
         let volume_manager = VolumeManager::new(sd_card, SdTimeSource);
@@ -162,6 +165,10 @@ pub struct SdComponent<'a, 'b, SPI: SpiDevice<u8>> {
     logs_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
     wav_dir: &'a Directory<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
     wav_num: u16,
+    audio_file: Option<File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>>,
+    audio_frames: u8,
+    audio_consumer: AudioConsumer,
+    prefer_audio: bool,
 }
 
 impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
@@ -170,6 +177,7 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
         data_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
         logs_file: &'a File<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
         wav_dir: &'a Directory<'a, SdCard<SPI, Delay>, SdTimeSource, 4, 4, 1>,
+        audio_consumer: AudioConsumer,
     ) -> Self {
         Self {
             status: Status::Initialized,
@@ -179,7 +187,97 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
             logs_file,
             wav_dir,
             wav_num: 0,
+            audio_file: None,
+            audio_frames: 0,
+            audio_consumer,
+            prefer_audio: false,
         }
+    }
+
+    async fn write_audio_frame(&mut self, frame: AudioReadGrant) -> Result<(), SdError<SPI>> {
+        let write_started = Instant::now().as_micros();
+        let write_result = async {
+            if self.audio_file.is_none() {
+                // Unwrapping is safe here because a u16 is exactly four hex digits.
+                let fname = heapless::format!(8; "{:04X}.wav", self.wav_num).unwrap();
+                let file = self
+                    .wav_dir
+                    .open_file_in_dir(fname.as_str(), Mode::ReadWriteCreateOrTruncate)?;
+                file.write(&orbisat::sd::wav_header(2, 44100, 16, 0))?;
+                self.audio_file = Some(file);
+            }
+
+            let file = self.audio_file.as_ref().unwrap();
+            for chunk in frame.chunks(AUDIO_SD_WRITE_CHUNK_SIZE) {
+                file.write(chunk)?;
+                Timer::after(Duration::from_micros(100)).await;
+            }
+
+            let next_frame_count = self.audio_frames + 1;
+            let data_size = u32::from(next_frame_count) * AUDIO_FRAME_SIZE as u32;
+            file.seek_from_start(0)?;
+            file.write(&orbisat::sd::wav_header(2, 44100, 32, data_size))?;
+            file.seek_from_end(0)?;
+            file.flush()?;
+
+            Ok::<u8, SdError<SPI>>(next_frame_count)
+        }
+        .await;
+        let write_duration = Instant::now().as_micros().wrapping_sub(write_started);
+        // defmt::warn!(
+        //     "WAV file {} frame {} SD write took {} us",
+        //     self.wav_num,
+        //     self.audio_frames,
+        //     write_duration
+        // );
+
+        frame.release();
+        self.audio_frames = match write_result {
+            Ok(frame_count) => frame_count,
+            Err(error) => {
+                self.audio_file = None;
+                self.audio_frames = 0;
+                return Err(error);
+            }
+        };
+        if self.audio_frames == WAV_FRAMES_PER_FILE {
+            self.audio_file = None;
+            self.audio_frames = 0;
+            self.wav_num += 1;
+        }
+
+        Ok(())
+    }
+
+    fn handle_request(&mut self, request: SdRequest) -> Result<(), SdError<SPI>> {
+        match request {
+            SdRequest::WritePacket(packet) => {
+                self.data_file.write(
+                    packet
+                        .encode(&mut self.buf)
+                        .map_err(CommunicationError::from)?,
+                )?;
+                self.data_file.flush()?;
+            }
+            SdRequest::LogMessage(message) => {
+                self.logs_file.write(message.as_bytes())?;
+                self.logs_file.flush()?;
+            }
+        }
+
+        // defmt::warn!("SdComponent handled request");
+
+        Ok(())
+    }
+
+    async fn handle_requests(&mut self, first: SdRequest) -> Result<(), SdError<SPI>> {
+        self.handle_request(first)?;
+
+        while !self.requests.is_empty() {
+            self.handle_request(self.requests.receive().await)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -198,56 +296,63 @@ impl<'a, 'b, SPI: SpiDevice<u8>> Component for SdComponent<'a, 'b, SPI> {
         self.status = status;
     }
 
+    fn run(
+        &mut self,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        async {
+            defmt::info!("Component {} started running", self.id());
+            // ctx.log(heapless::format!("Component {} started running\n", self.id()).unwrap())
+            // .await;
+            self.set_status(Status::Running);
+
+            loop {
+                let result = {
+                    self.receive_tc(ctx).await?;
+                    self.run_once(ctx).await
+                };
+
+                match result {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.set_status(Status::Failed);
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    }
+
     async fn run_once(
         &mut self,
         ctx: &mut orbisat::context::ContextHandle<'_>,
     ) -> Result<(), Self::Error> {
-        let mut messages = 0usize;
+        if self.prefer_audio
+            && let Ok(frame) = self.audio_consumer.read()
+        {
+            self.prefer_audio = false;
+            return self.write_audio_frame(frame).await;
+        }
 
-        while !self.requests.is_empty() {
-            match self.requests.receive().await {
-                SdRequest::WritePacket(packet) => {
-                    self.data_file.write(
-                        packet
-                            .encode(&mut self.buf)
-                            .map_err(CommunicationError::from)?,
-                    )?;
-                }
-                SdRequest::LogMessage(message) => self.logs_file.write(message.as_bytes())?,
-                SdRequest::WriteWav(wav) => {
-                    // Unwrapping is safe here because a u16 can always be formatted to 4 characters in hex
-                    let fname = heapless::format!(8; "{:04X}.wav", self.wav_num).unwrap();
-                    let file = self
-                        .wav_dir
-                        .open_file_in_dir(fname.as_str(), Mode::ReadWriteCreateOrTruncate)?;
+        if !self.requests.is_empty() {
+            self.prefer_audio = true;
+            return self.handle_requests(self.requests.receive().await).await;
+        }
 
-                    // TODO: don't hardcode buffer size
-                    let mut buf = [0u8; 8192 + 44];
-                    // Unwrapping is safe beccause the buffer is large enough
-                    let size = wav.to_bytes(&mut buf).unwrap();
-
-                    defmt::warn!("Writing wav to sd @ {}", Instant::now().as_micros());
-                    file.write(&buf[..size])?;
-                    defmt::warn!("Finished writing @ {}", Instant::now().as_micros());
-
-                    self.wav_num += 1;
-                }
+        match embassy_futures::select::select(
+            self.requests.receive(),
+            self.audio_consumer.wait_read(),
+        )
+        .await
+        {
+            embassy_futures::select::Either::First(request) => {
+                self.prefer_audio = true;
+                self.handle_requests(request).await
             }
-
-            messages += 1;
+            embassy_futures::select::Either::Second(frame) => {
+                self.prefer_audio = false;
+                self.write_audio_frame(frame).await
+            }
         }
-
-        // Flush both files only after writing all available messages
-        // If nothing was written, don't bother flushing
-        if messages > 0 {
-            self.data_file.flush()?;
-            self.logs_file.flush()?;
-            defmt::info!("SdComponent flushed after handling {} messages", messages);
-        }
-
-        // Wait so that messages can queue up
-        ctx.next_tick().await;
-
-        Ok(())
     }
 }

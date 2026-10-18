@@ -145,7 +145,15 @@ impl<'a> ContextHandle<'a> {
     }
 
     pub async fn sd_request(&self, request: SdRequest) {
-        self.sd_requests.send(request).await;
+        match embassy_futures::select::select(
+            self.sd_requests.send(request),
+            Timer::after(Duration::from_micros(100)),
+        )
+        .await
+        {
+            embassy_futures::select::Either::First(_) => {}
+            embassy_futures::select::Either::Second(_) => defmt::warn!("Context log timed out."),
+        }
     }
 
     pub fn delay_mut(&mut self) -> &mut Delay {

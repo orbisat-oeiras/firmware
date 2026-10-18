@@ -1,6 +1,7 @@
 #![no_std]
 #![feature(with_negative_coherence)]
 
+pub mod audio_stream;
 pub mod primary;
 pub mod sd;
 pub mod secondary;
@@ -11,11 +12,14 @@ use core::{
     sync::atomic::{AtomicU8, Ordering},
 };
 
+use embassy_sync::pubsub::WaitResult;
 use embassy_time::Instant;
 use orbipacket::{DeviceId, Payload};
 use orbisat::{
     Component, Status,
+    channels::OutboundPacketChannelSubscriber,
     comms::{ByteSink, ByteSource, CommunicationError},
+    sd::SdRequest,
 };
 
 #[derive(Debug)]
@@ -54,6 +58,53 @@ where
         // defmt::info!("Uart sending");
         self.0.write_all(buf).await?;
         self.0.flush().await?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct SdPacketSink<'a> {
+    status: Status,
+    recv: OutboundPacketChannelSubscriber<'a>,
+}
+
+impl<'a> SdPacketSink<'a> {
+    pub fn new(recv: OutboundPacketChannelSubscriber<'a>) -> Self {
+        Self {
+            status: Status::Initialized,
+            recv,
+        }
+    }
+}
+
+impl<'a> Component for SdPacketSink<'a> {
+    type Error = CommunicationError;
+
+    fn id(&self) -> DeviceId {
+        DeviceId::System
+    }
+
+    fn status(&self) -> Status {
+        self.status
+    }
+
+    fn set_status(&mut self, status: Status) {
+        self.status = status
+    }
+
+    async fn run_once(
+        &mut self,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
+    ) -> Result<(), Self::Error> {
+        let packet = match self.recv.next_message().await {
+            WaitResult::Lagged(n) => {
+                return Err(CommunicationError::OutboundPacketLagged(n));
+            }
+            WaitResult::Message(p) => p,
+        };
+        ctx.sd_request(SdRequest::WritePacket(packet)).await;
+        // defmt::info!("Sent packet");
+
         Ok(())
     }
 }

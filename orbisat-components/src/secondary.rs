@@ -1,5 +1,6 @@
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
-use orbipacket::{DeviceId, TimestampError};
+use orbipacket::{DeviceId, Payload, TimestampError};
 use orbisat::{Component, Status, comms::CommunicationError};
 
 #[derive(thiserror::Error, Debug)]
@@ -30,16 +31,22 @@ pub struct SpeakerComponent<'a, PWM: SetFrequency> {
     data: SweepData<'a>,
     idx: usize,
     forward_sweep: bool,
+    launch_signal: &'a Signal<CriticalSectionRawMutex, ()>,
 }
 
 impl<'a, PWM: SetFrequency> SpeakerComponent<'a, PWM> {
-    pub fn new(pwm: PWM, data: SweepData<'a>) -> Self {
+    pub fn new(
+        pwm: PWM,
+        data: SweepData<'a>,
+        launch_signal: &'a Signal<CriticalSectionRawMutex, ()>,
+    ) -> Self {
         Self {
             status: Status::Initialized,
             pwm,
             data,
             idx: 0,
             forward_sweep: true,
+            launch_signal,
         }
     }
 }
@@ -64,11 +71,23 @@ impl<'a, PWM: SetFrequency> Component for SpeakerComponent<'a, PWM> {
         ctx: &mut orbisat::context::ContextHandle<'_>,
     ) -> Result<(), Self::Error> {
         defmt::info!("Component {} started running", self.id());
+        ctx.log(heapless::format!("Component {} started running\n", self.id()).unwrap())
+            .await;
+
         self.set_status(Status::Paused);
 
         loop {
             let result = {
                 self.receive_tc(ctx).await?;
+
+                if self.launch_signal.signaled() {
+                    self.set_status(Status::Running);
+                    ctx.send_outbound(self.id(), Payload::from_u32(0)).await?;
+                    ctx.log(heapless::format!("Buzzer turned on via launch signal\n").unwrap())
+                        .await;
+                    self.launch_signal.reset();
+                }
+
                 self.run_once(ctx).await
             };
 
@@ -125,16 +144,22 @@ impl<'a, PWM: SetFrequency> Component for SpeakerComponent<'a, PWM> {
 
     async fn handle_tc(
         &mut self,
-        _ctx: &mut orbisat::context::ContextHandle<'_>,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
         _tc: orbipacket::TcPacket,
     ) -> Result<(), Self::Error> {
         match self.status {
             Status::Running => {
                 self.set_status(Status::Paused);
                 self.pwm.stop().await;
+                ctx.send_outbound(self.id(), Payload::from_u32(0)).await?;
+                ctx.log(heapless::format!("Buzzer turned off via TC\n").unwrap())
+                    .await;
             }
             Status::Paused => {
                 self.set_status(Status::Running);
+                ctx.send_outbound(self.id(), Payload::from_u32(1)).await?;
+                ctx.log(heapless::format!("Buzzer turned on via TC\n").unwrap())
+                    .await;
             }
             _ => {}
         }

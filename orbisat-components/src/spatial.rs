@@ -1,5 +1,6 @@
 use core::{fmt::Debug, str::Utf8Error};
 
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embedded_hal::i2c;
 use mma8x5x::{
     Error as DriverError, GScale, Mma8x5x, ModeChangeError, OutputDataRate, PowerMode, SlaveAddr,
@@ -47,13 +48,19 @@ impl<I2C: i2c::I2c> From<TimestampError> for Mma8452Error<I2C> {
     }
 }
 
-pub struct Mma8542Component<I2C: i2c::I2c> {
+pub struct Mma8542Component<'a, I2C: i2c::I2c> {
     status: Status,
     driver: Mma8x5x<I2C, Mma8452, Active>,
+    launch_signal: &'a Signal<CriticalSectionRawMutex, ()>,
+    launch_threshold: (f32, f32),
 }
 
-impl<I2C: i2c::I2c> Mma8542Component<I2C> {
-    pub fn new(i2c: I2C) -> Result<Self, Mma8452Error<I2C>> {
+impl<'a, I2C: i2c::I2c> Mma8542Component<'a, I2C> {
+    pub fn new(
+        i2c: I2C,
+        launch_signal: &'a Signal<CriticalSectionRawMutex, ()>,
+        launch_threshold: (f32, f32),
+    ) -> Result<Self, Mma8452Error<I2C>> {
         let mut driver = Mma8x5x::new_mma8452(i2c, SlaveAddr::Alternative(true));
 
         driver.set_scale(GScale::G8)?;
@@ -64,18 +71,42 @@ impl<I2C: i2c::I2c> Mma8542Component<I2C> {
         Ok(Self {
             status: Status::Initialized,
             driver,
+            launch_signal,
+            launch_threshold: (
+                launch_threshold.0 * launch_threshold.0,
+                launch_threshold.1 * launch_threshold.1,
+            ),
         })
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug> Sensor<Acceleration> for Mma8542Component<I2C> {
+impl<'a, I2C: i2c::I2c + core::fmt::Debug> Sensor<Acceleration> for Mma8542Component<'a, I2C> {
     type Error = Mma8452Error<I2C>;
 
     async fn read(
         &mut self,
-        _ctx: &mut orbisat::context::ContextHandle<'_>,
+        ctx: &mut orbisat::context::ContextHandle<'_>,
     ) -> Result<Acceleration, Self::Error> {
         let measurement = self.driver.read()?;
+
+        let magnitude = measurement.x * measurement.x
+            + measurement.y * measurement.y
+            + measurement.z
+            + measurement.z;
+
+        if magnitude > self.launch_threshold.0 && magnitude < self.launch_threshold.1 {
+            self.launch_signal.signal(());
+            ctx.log(
+                heapless::format!(
+                    "Launch detected at {} magnitude (threshold {}..{})\n",
+                    magnitude,
+                    self.launch_threshold.0,
+                    self.launch_threshold.1
+                )
+                .unwrap(),
+            )
+            .await;
+        }
 
         Ok(Acceleration::new(
             measurement.x,
@@ -85,7 +116,7 @@ impl<I2C: i2c::I2c + core::fmt::Debug> Sensor<Acceleration> for Mma8542Component
     }
 }
 
-impl<I2C: i2c::I2c + core::fmt::Debug> Component for Mma8542Component<I2C> {
+impl<'a, I2C: i2c::I2c + core::fmt::Debug> Component for Mma8542Component<'a, I2C> {
     type Error = Mma8452Error<I2C>;
 
     fn id(&self) -> orbipacket::DeviceId {

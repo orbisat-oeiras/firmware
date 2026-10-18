@@ -8,12 +8,14 @@
 #![allow(clippy::type_complexity)]
 
 #[cfg(feature = "esp32s3")]
+use core::mem::MaybeUninit;
+#[cfg(feature = "esp32s3")]
 use core::sync::atomic::Ordering;
 use core::sync::atomic::{AtomicU8, AtomicUsize};
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Delay, Duration};
 #[cfg(feature = "esp32s3")]
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -26,7 +28,7 @@ use esp_hal::{
     uart::{UartRx, UartTx},
 };
 #[cfg(feature = "esp32s3")]
-use esp_hal::{dma_descriptors, gpio::Output, psram::Psram};
+use esp_hal::{gpio::Output, psram::Psram};
 #[cfg(feature = "esp32s3")]
 use esp_hal::{spi::master::Spi, system::Stack};
 #[cfg(feature = "esp32s3")]
@@ -39,13 +41,14 @@ use orbisat::{
     context::Context,
 };
 use orbisat_components::{
-    ConsoleByteSink, SerialByteSink, SerialByteSource,
+    SdPacketSink, SerialByteSink, SerialByteSource,
     primary::{Bme280Device, Bme280HumiditySensor, Bme280PressureSensor, Bme280TemperatureSensor},
     spatial::Mma8542Component,
 };
 #[cfg(feature = "esp32s3")]
 use orbisat_components::{
     TimeSyncComponent,
+    audio_stream::{AUDIO_QUEUE_CAPACITY, AudioQueue, AudioStorage},
     sd::{SdCardManager, SdComponent, SdTimeSource},
     secondary::SpeakerComponent,
 };
@@ -63,6 +66,8 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 static BOOTCOUNT: AtomicU8 = AtomicU8::new(0);
 static PSRAM_OFFSET: AtomicUsize = AtomicUsize::new(0);
+
+const DMA_BUFFER_SIZE: usize = 4096;
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
@@ -85,7 +90,7 @@ async fn main(spawner: Spawner) {
     let sw_ints = p.take_software_interrupts().unwrap();
     esp_rtos::start(timg0.timer0, sw_ints.software_interrupt0);
 
-    info!("Embassy initialized!");
+    // info!("Embassy initialized!");
 
     // CREATE CONTEXT
     let ctx = &*unsafe {
@@ -116,6 +121,9 @@ async fn main(spawner: Spawner) {
         .await
         .expect("should be able to initialize BME280 driver");
 
+    static LAUNCH_SIGNAL: StaticCell<Signal<CriticalSectionRawMutex, ()>> = StaticCell::new();
+    let launch_signal = LAUNCH_SIGNAL.init(Signal::new());
+
     // SPAWN COMPONENT TASKS
     components! {
         (spawner, ctx) {
@@ -123,6 +131,9 @@ async fn main(spawner: Spawner) {
             //     ctx.outbound().subscriber().expect("outbound should be subscribable"),
             //     ConsoleByteSink,
             // );
+            sd_sink: SdPacketSink<'static>  = (
+                ctx.outbound().subscriber().expect("outbound should be subscribable")
+            );
             serial_sink: PacketSink<SerialByteSink<UartTx<'static, Async>>> = (
                 ctx.outbound().subscriber().expect("outbound should be subscribable"),
                 SerialByteSink::new(uart0_tx),
@@ -135,7 +146,7 @@ async fn main(spawner: Spawner) {
             temperature_sensor: Bme280TemperatureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             pressure_sensor: Bme280PressureSensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
             humidity_sensor: Bme280HumiditySensor<'static, I2c<'static, Async>, CriticalSectionRawMutex>  = (bme_mutex);
-            accelerometer: Mma8542Component<I2c<'static, Blocking>> = (p.take_i2c1().unwrap()).expect("should be able to create Mma8542Component");
+            accelerometer: Mma8542Component<'static, I2c<'static, Blocking>> = (p.take_i2c1().unwrap(), launch_signal, (6.0, 10.0)).expect("should be able to create Mma8542Component");
             // gnss: GnssComponent<UartRx<'static, Async>> = (uart1_rx);
         }
     }
@@ -143,7 +154,7 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32s3")]
     components! {
         (spawner, ctx) {
-            speaker: SpeakerComponent<'static, PwmController<'static>> = (p.take_pwm().unwrap(), &sweep::SWEEP[..]);
+            speaker: SpeakerComponent<'static, PwmController<'static>> = (p.take_pwm().unwrap(), &sweep::SWEEP[..], launch_signal);
         }
     }
 
@@ -154,7 +165,23 @@ async fn main(spawner: Spawner) {
     #[cfg(feature = "esp32s3")]
     {
         let mic_scratch = unsafe { psram_allocate(&psram, || [0u8; 1024]) };
-        let dma_buffer = unsafe { psram_allocate(&psram, || [0u8; 4096]) };
+        let audio_storage = unsafe {
+            psram_allocate(&psram, || {
+                MaybeUninit::<[MaybeUninit<u8>; AUDIO_QUEUE_CAPACITY]>::uninit()
+            })
+        };
+        let audio_storage = unsafe {
+            core::slice::from_raw_parts_mut(
+                audio_storage.as_mut_ptr().cast::<MaybeUninit<u8>>(),
+                AUDIO_QUEUE_CAPACITY,
+            )
+        };
+        static AUDIO_QUEUE: StaticCell<AudioQueue> = StaticCell::new();
+        let audio_queue = AUDIO_QUEUE.init(AudioQueue::new_with_storage(AudioStorage::new(
+            audio_storage,
+        )));
+        let audio_producer = audio_queue.framed_producer();
+        let audio_consumer = audio_queue.framed_consumer();
 
         static CORE1_STACK: StaticCell<Stack<32768>> = StaticCell::new();
         let core1_stack = CORE1_STACK.init(Stack::new());
@@ -176,7 +203,8 @@ async fn main(spawner: Spawner) {
                         ctx,
                         ctx.sd_request_receiver(),
                         mic_scratch,
-                        dma_buffer,
+                        audio_producer,
+                        audio_consumer,
                     )
                 });
             },
@@ -191,7 +219,8 @@ fn core1_main(
     ctx: &'static Context,
     receiver: SdRequestChannelReceiver<'static>,
     mic_scratch: &'static mut [u8; 1024],
-    dma_buffer: &'static mut [u8; 4096],
+    audio_producer: orbisat_components::audio_stream::AudioProducer,
+    audio_consumer: orbisat_components::audio_stream::AudioConsumer,
 ) {
     // SETUP SD CARD
     let (bootcount, data_file, logs_file, audio_dir) = {
@@ -324,7 +353,7 @@ fn core1_main(
     BOOTCOUNT.store(bootcount, Ordering::Relaxed);
     defmt::info!("Stored global bootcount");
 
-    let rx_descriptors = dma_descriptors!(4096, 0).0;
+    let rx_buffer = esp_hal::dma_rx_stream_buffer!(DMA_BUFFER_SIZE, 1024);
 
     let i2s = p.take_i2s().unwrap().into_async();
     let i2s_rx = i2s
@@ -332,7 +361,7 @@ fn core1_main(
         .with_bclk(p.take_i2s_bclk().unwrap())
         .with_ws(p.take_i2s_ws().unwrap())
         .with_din(p.take_i2s_din().unwrap())
-        .build(rx_descriptors);
+        .build();
 
     components! {
             (spawner, ctx) {
@@ -340,8 +369,8 @@ fn core1_main(
                     'static,
                     'static,
                     ExclusiveDevice<Spi<'static, Async>, Output<'static>, Delay>,
-                > = (receiver, data_file, logs_file, audio_dir);
-                mic: MicComponent<'static> = (i2s_rx, dma_buffer, mic_scratch);
+                > = (receiver, data_file, logs_file, audio_dir, audio_consumer);
+                mic: MicComponent<'static> = (i2s_rx, rx_buffer, mic_scratch, audio_producer);
             }
     }
 }
