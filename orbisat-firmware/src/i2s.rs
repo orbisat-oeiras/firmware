@@ -132,15 +132,6 @@ impl<'a> Component for MicComponent<'a> {
                 let bytes_processed = samples_to_process * 8;
                 let new_residual = total_bytes - bytes_processed;
 
-                // Convert 24-bit to 16-bit PCM (/ 256) with +18 dB gain (* 8): scale = 8 / 256 = 1 / 32
-                let v = y * (2.0f32 / 256.0f32);
-                let sample16 = if v > 32767.0f32 {
-                    32767i16
-                } else if v < -32768.0f32 {
-                    -32768i16
-                } else {
-                    v as i16
-                };
                 for i in 0..samples_to_process {
                     let offset = i * 8;
                     let l_raw = i32::from_le_bytes([
@@ -186,25 +177,14 @@ impl<'a> Component for MicComponent<'a> {
                         r_val
                     };
 
-                if self.idx == AUDIO_FRAME_SIZE {
-                    self.audio_frame
-                        .take()
-                        .unwrap()
-                        .commit(AUDIO_FRAME_SIZE as u16);
-                    self.idx = 0;
-                    self.frames_committed = self.frames_committed.wrapping_add(1);
-                    // if self.frames_committed % 4 == 0 {
-                    //     defmt::info!("Mic Audio: ACTIVE (peak={}/32767)", self.current_peak);
-                    //     self.current_peak = 0;
-                    // }
                     // DC-blocking filter (single-pole high-pass): y[n] = x[n] - x[n-1] + 0.995 * y[n-1]
                     let x = s as f32;
                     let y = x - self.x_prev + 0.995f32 * self.y_prev;
                     self.x_prev = x;
                     self.y_prev = y;
 
-                    // Convert 24-bit to 16-bit PCM (/ 256) with +18 dB gain (* 8): scale = 8 / 256 = 1 / 32
-                    let v = y * (8.0f32 / 256.0f32);
+                    // Convert 24-bit to 16-bit PCM (/ 256) with gain factor (2.0):
+                    let v = y * (2.0f32 / 256.0f32);
                     let sample16 = if v > 32767.0f32 {
                         32767i16
                     } else if v < -32768.0f32 {
