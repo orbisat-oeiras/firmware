@@ -16,7 +16,7 @@ use orbisat::{
 };
 
 const AUDIO_SD_WRITE_CHUNK_SIZE: usize = 512;
-const WAV_FRAMES_PER_FILE: u8 = 65;
+const WAV_FRAMES_PER_FILE: u8 = 20;
 
 #[derive(Debug)]
 pub struct SdTimeSource;
@@ -203,7 +203,12 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
                 let file = self
                     .wav_dir
                     .open_file_in_dir(fname.as_str(), Mode::ReadWriteCreateOrTruncate)?;
-                file.write(&orbisat::sd::wav_header(2, 44100, 16, 0))?;
+                file.write(&orbisat::sd::wav_header(
+                    1,
+                    orbisat::sd::SAMPLE_RATE_HZ,
+                    16,
+                    0,
+                ))?;
                 self.audio_file = Some(file);
             }
 
@@ -216,7 +221,12 @@ impl<'a, 'b, SPI: SpiDevice<u8>> SdComponent<'a, 'b, SPI> {
             let next_frame_count = self.audio_frames + 1;
             let data_size = u32::from(next_frame_count) * AUDIO_FRAME_SIZE as u32;
             file.seek_from_start(0)?;
-            file.write(&orbisat::sd::wav_header(2, 44100, 32, data_size))?;
+            file.write(&orbisat::sd::wav_header(
+                1,
+                orbisat::sd::SAMPLE_RATE_HZ,
+                16,
+                data_size,
+            ))?;
             file.seek_from_end(0)?;
             file.flush()?;
 

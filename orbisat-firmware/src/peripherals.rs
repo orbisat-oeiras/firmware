@@ -218,7 +218,7 @@ pub mod second_core {
         time::Rate,
     };
 
-    pub const SAMPLE_RATE_HZ: u32 = 44100;
+    pub const SAMPLE_RATE_HZ: u32 = orbisat::sd::SAMPLE_RATE_HZ;
 
     pub struct SecondCorePeripheralManager {
         spi: Option<Spi<'static, Blocking>>,
@@ -251,7 +251,7 @@ pub mod second_core {
                 unsafe { p.DMA_CH0.clone_unchecked() },
                 TdmConfig::new_tdm_philips()
                     .with_sample_rate(Rate::from_hz(SAMPLE_RATE_HZ))
-                    .with_data_format(DataFormat::Data32Channel24)
+                    .with_data_format(DataFormat::Data32Channel32)
                     .with_channels(Channels::STEREO),
             )
             .expect("should be able to create I2s driver")

@@ -7,6 +7,7 @@ pub enum SdRequest {
     LogMessage(heapless::String<128>),
 }
 
+pub const SAMPLE_RATE_HZ: u32 = 16000;
 pub const WAV_HEADER_SIZE: usize = 44;
 
 pub fn wav_header(

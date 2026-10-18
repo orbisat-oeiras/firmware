@@ -23,6 +23,12 @@ pub struct MicComponent<'a> {
     audio_frame: Option<AudioWriteGrant>,
     restart_pending: bool,
     idx: usize,
+    rx_residual: usize,
+    x_prev: f32,
+    y_prev: f32,
+    warmup_samples: usize,
+    current_peak: i16,
+    frames_committed: u32,
 }
 
 impl<'a> MicComponent<'a> {
@@ -42,6 +48,12 @@ impl<'a> MicComponent<'a> {
             audio_frame: None,
             restart_pending: false,
             idx: 0,
+            rx_residual: 0,
+            x_prev: 0.0,
+            y_prev: 0.0,
+            warmup_samples: 3200,
+            current_peak: 0,
+            frames_committed: 0,
         }
     }
 
@@ -104,11 +116,66 @@ impl<'a> Component for MicComponent<'a> {
                 self.restart_pending = true;
             }
 
-            let count = transaction.pop(self.rx_buf);
-            let mut copied = 0;
-            while copied < count {
+            let popped = transaction.pop(&mut self.rx_buf[self.rx_residual..]);
+            let total_bytes = self.rx_residual + popped;
+            let samples_to_process = total_bytes / 8;
+            let bytes_processed = samples_to_process * 8;
+            let new_residual = total_bytes - bytes_processed;
+
+            for i in 0..samples_to_process {
+                let offset = i * 8;
+                let l_raw = i32::from_le_bytes([
+                    self.rx_buf[offset],
+                    self.rx_buf[offset + 1],
+                    self.rx_buf[offset + 2],
+                    self.rx_buf[offset + 3],
+                ]);
+                let r_raw = i32::from_le_bytes([
+                    self.rx_buf[offset + 4],
+                    self.rx_buf[offset + 5],
+                    self.rx_buf[offset + 6],
+                    self.rx_buf[offset + 7],
+                ]);
+
+                // INMP441 puts 24-bit MSB-aligned data in the upper 24 bits of a 32-bit slot
+                let l_val = l_raw >> 8;
+                let r_val = r_raw >> 8;
+
+                // Dynamically select the active channel (supports L/R tied to GND, 3.3V, or floating)
+                let s = if l_val.abs() >= r_val.abs() {
+                    l_val
+                } else {
+                    r_val
+                };
+
+                // DC-blocking filter (single-pole high-pass): y[n] = x[n] - x[n-1] + 0.995 * y[n-1]
+                let x = s as f32;
+                let y = x - self.x_prev + 0.995f32 * self.y_prev;
+                self.x_prev = x;
+                self.y_prev = y;
+
+                // Discard initial samples to eliminate power-on thump
+                if self.warmup_samples > 0 {
+                    self.warmup_samples -= 1;
+                    continue;
+                }
+
+                // Convert 24-bit to 16-bit PCM (/ 256) with +18 dB gain (* 8): scale = 8 / 256 = 1 / 32
+                let v = y * (8.0f32 / 256.0f32);
+                let sample16 = if v > 32767.0f32 {
+                    32767i16
+                } else if v < -32768.0f32 {
+                    -32768i16
+                } else {
+                    v as i16
+                };
+
+                let mag = sample16.unsigned_abs() as i16;
+                if mag > self.current_peak {
+                    self.current_peak = mag;
+                }
+
                 if self.audio_frame.is_none() {
-                    // defmt::warn!("Mic waiting for free audio queue frame");
                     self.audio_frame = Some(
                         self.audio_producer
                             .wait_grant(AUDIO_FRAME_SIZE as u16)
@@ -116,13 +183,11 @@ impl<'a> Component for MicComponent<'a> {
                     );
                 }
 
-                let remaining = AUDIO_FRAME_SIZE - self.idx;
-                let chunk = remaining.min(count - copied);
+                let pcm_bytes = sample16.to_le_bytes();
                 let frame = self.audio_frame.as_mut().unwrap();
-                frame[self.idx..self.idx + chunk]
-                    .copy_from_slice(&self.rx_buf[copied..copied + chunk]);
-                self.idx += chunk;
-                copied += chunk;
+                frame[self.idx] = pcm_bytes[0];
+                frame[self.idx + 1] = pcm_bytes[1];
+                self.idx += 2;
 
                 if self.idx == AUDIO_FRAME_SIZE {
                     self.audio_frame
@@ -130,8 +195,18 @@ impl<'a> Component for MicComponent<'a> {
                         .unwrap()
                         .commit(AUDIO_FRAME_SIZE as u16);
                     self.idx = 0;
+                    self.frames_committed = self.frames_committed.wrapping_add(1);
+                    if self.frames_committed % 4 == 0 {
+                        defmt::info!("Mic Audio: ACTIVE (peak={}/32767)", self.current_peak);
+                        self.current_peak = 0;
+                    }
                 }
             }
+
+            if new_residual > 0 {
+                self.rx_buf.copy_within(bytes_processed..total_bytes, 0);
+            }
+            self.rx_residual = new_residual;
         }
 
         let restart = self.restart_pending
